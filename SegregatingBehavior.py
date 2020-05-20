@@ -15,20 +15,18 @@ import matplotlib
 import matplotlib.pyplot as plt
 import os
 from glob import glob
-from scipy.spatial import distance
+from scipy import interpolate
 import seaborn as sns; sns.set()
-import math
-from scipy.interpolate import UnivariateSpline
-from scipy.signal import find_peaks, peak_widths
-from scipy.stats import norm
+from hmmlearn import hmm
+# import ssm
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from tqdm import tqdm_notebook as tqdm
-from scipy.ndimage.morphology import binary_dilation
-from scipy.ndimage.filters import gaussian_filter
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.cm as cm
-import ssm
-from ssm.util import find_permutation
-from operator import add
+from sklearn.cluster import KMeans
+from itertools import permutations
+import moviepy
+from moviepy.editor import VideoFileClip, VideoClip
+from moviepy.video.io.bindings import mplfig_to_npimage
 
 #%%
 #Functions
@@ -81,6 +79,14 @@ def getfiltereddata_2(h5_files):
         data_auto2_filt['A_head']['x'] = data_auto2_filt['A_head']['x'] + 500
         data_auto2_filt['B_rightoperculum']['x'] = data_auto2_filt['B_rightoperculum']['x'] + 500
         data_auto2_filt['E_leftoperculum']['x'] = data_auto2_filt['E_leftoperculum']['x'] + 500
+    
+    
+    data_auto1_filt['zeroed','x'] = data_auto1_filt['A_head']['x'] - midpoint(data_auto1_filt['B_rightoperculum']['x'], data_auto1_filt['B_rightoperculum']['y'], data_auto1_filt['E_leftoperculum']['x'], data_auto1_filt['E_leftoperculum']['y'])[0]
+    data_auto1_filt['zeroed','y'] = data_auto1_filt['A_head']['y'] - midpoint(data_auto1_filt['B_rightoperculum']['x'], data_auto1_filt['B_rightoperculum']['y'], data_auto1_filt['E_leftoperculum']['x'], data_auto1_filt['E_leftoperculum']['y'])[1]
+    
+    data_auto2_filt['zeroed','x'] = data_auto2_filt['A_head']['x'] - midpoint(data_auto2_filt['B_rightoperculum']['x'], data_auto2_filt['B_rightoperculum']['y'], data_auto2_filt['E_leftoperculum']['x'], data_auto2_filt['E_leftoperculum']['y'])[0]
+    data_auto2_filt['zeroed','y'] = data_auto2_filt['A_head']['y'] - midpoint(data_auto2_filt['B_rightoperculum']['x'], data_auto2_filt['B_rightoperculum']['y'], data_auto2_filt['E_leftoperculum']['x'], data_auto2_filt['E_leftoperculum']['y'])[1]
+    
     
     return data_auto1_filt, data_auto2_filt
 
@@ -224,6 +230,268 @@ def oper_max(Operangle,width=20):
         OpMax.append(local.max())
         
     return OpMax
+#%%
+
+# Measuring Tail Beating Behavior
+def conditional_orientation(data, orientation, threshold):
+    '''
+    creates a dataframe of only frames in which the fish
+    is turned inside a certain orientation.
+    '''
+    boolean = orientation.apply(lambda x: 1 if x > threshold else 0) 
+    df = pd.DataFrame(data, index = boolean)
+    df = df.loc[1]
+    
+    return df
+
+
+#%%
+    
+# Yuqi's codes, does the rotation first, then in one function filters and calculates the derivatives. Does not compute a 
+    # curvature
+    
+# My ideas to make roattion faster: do the filtering first, this will greatly reduce the 
+    # number of data you would need to rotate 
+def rotation(data):
+    n = data.shape[0]
+    ## transfer spline data to point vector
+    spline_point = []
+    x_index = [0, 15, 18, 21, 24, 27, 30, 33]
+    y_index = [1, 16, 19, 22, 25, 28, 31, 34]
+    x = data.iloc[:,x_index]
+    y = data.iloc[:,y_index]
+    spline_point = np.column_stack([x,y])
+    
+    ## reference vector
+    head = np.column_stack([data.iloc[:,0],data.iloc[:,1]]) # dim = 216059, 2
+    spline1 = np.column_stack([data.iloc[:,15],data.iloc[:,16]])
+    # dim = 216059, 2
+    head_r = head-spline1 # reference vector to x axis
+    
+    ##  rotation matrix 
+    norm = np.linalg.norm(head_r)
+#    for i in range(len(head_r)):
+#        norm.append(np.linalg.norm(head_r[i]))
+    norm = np.array(norm)
+    angle = np.column_stack([head_r[:,0]/norm, head_r[:,1]/norm])
+    angle2 = np.column_stack([-angle[:,1],angle[:,0]])
+    rot_matrix = np.column_stack([angle,angle2])
+   
+    ## rotate point coordinates
+    spline_rotate = []
+    
+    for i in range(n):
+        x = []
+        for j in spline_point[i].reshape((8,2), order = "F"):
+            x.append((np.dot(rot_matrix[i].reshape(2,2),j-spline1[i])))
+        spline_rotate.append(x)
+    
+    return(spline_rotate)
+    
+    
+def tail_spline(rotate_points,r = 15, t1 = 10, t2 = 5):
+    tail = []
+    for i in range(len(rotate_points)):
+        pts = np.array(rotate_points[i])
+        index = [0]
+        omit = []
+
+        for k in range(len(pts)):
+            radius = np.linalg.norm(pts[k])
+            if radius<=(r*(k-1)+t1) and radius >(r*(k-2)-t2):
+                index.append(k)
+            else:
+                omit.append(k)
+        if len(index)<4:
+            tail.append(np.nan)
+            print(i)
+            continue        
+        pts_n = pts[index]
+        f = pts[max(index)][1]/pts[max(index)][0]
+        tck, u = interpolate.splprep(pts_n.T, u=None, s=0.0) 
+        yder = interpolate.splev(u, tck, der=1)
+        z = np.zeros(8)
+        z[index] = (yder[1]/yder[0])
+        z[omit[1:]] = f
+        tail.append(z)
+    tail = np.array(tail)
+    return(tail) 
+    
+#%%
+
+# Yuyang's code. Does not do rotation, but does calculate a curvature. Finds a lot of error, but I think that's because he's not
+    # calculated the spine slpline but instead includes tail points
+
+# Way to combine Yuqi and Yuyang. Use Yuyang's filtering method on Yuqi defined points because it allows for np.nans, then
+# perform Yuqi's rotation metric on the filtered data. Then perform yuyang's curviture calc. do a ffill to get rid np.nan
+# align to orientation data and filter, then try a PCA on the data. Do a clustering analysis using the HMM from HMMlearn.
+    
+# filtering
+def Combine_filter (data, p0 = 20  , p1 = 20):
+    '''
+    returns a whole dataframe with NANs according to general and specific spine criterion
+    '''
+    mydata = data.copy()
+    boi = ['A_head','B_rightoperculum','E_leftoperculum',"F_spine1","G_spine2","H_spine3","I_spine4","J_spine5","K_spine6","L_spine7"]
+    for b in boi:
+        for j in ['x','y']:
+            xdifference = abs(mydata[b][j].diff())
+            xdiff_check = xdifference > p0     
+            mydata[b][j][xdiff_check] = np.nan
+    spine_column=["A_head", "F_spine1","G_spine2","H_spine3","I_spine4","J_spine5","K_spine6","L_spine7",'D_tailtip','C_tailbase']
+    for i,c in enumerate(spine_column):
+        if (i>1 and i<(len(spine_column)-1)):
+            dist1=np.sqrt(np.square(mydata[spine_column[i-1]]['x']-mydata[c]['x'])+np.square(mydata[spine_column[i-1]]['y']-mydata[c]['y']))
+            dist2=np.sqrt(np.square(mydata[spine_column[i+1]]['x']-mydata[c]['x'])+np.square(mydata[spine_column[i+1]]['y']-mydata[c]['y']))
+            dist_check=np.logical_and(dist1>p1,dist2>p1)
+            mydata[c]["x"][dist_check] = np.nan
+            mydata[c]["y"][dist_check] = np.nan
+        if i==(len(spine_column)-1):
+            dist1=np.sqrt(np.square(mydata[spine_column[i-1]]['x']-mydata[c]['x'])+np.square(mydata[spine_column[i-1]]['y']-mydata[c]['y']))
+            dist2=np.sqrt(np.square(mydata[spine_column[i-2]]['x']-mydata[c]['x'])+np.square(mydata[spine_column[i-2]]['y']-mydata[c]['y']))
+            dist_check=np.logical_and(dist1<p1,dist2<p1)
+            mydata[c]["x"][dist_check] = np.nan
+            mydata[c]["y"][dist_check] = np.nan
+    # FILLS IN THE NANS
+    # mydata = mydata.fillna(method = 'ffill')
+    return(mydata)
+#%%
+def Combine_filter_CE (data, p0 = 20  , p1 = 20):
+    '''
+    
+    This function filters  based on 1) jumps between frames, 2) the liklihood of the position, 3) the closeness of the points
+    It does not filter based on any distance (Yuqi and Yuyang can perfect)
+    
+    returns a whole dataframe with NANs according to general and specific spine criterion
+    '''
+    mydata = data.copy()
+    boi = ['A_head','B_rightoperculum','E_leftoperculum',"F_spine1","G_spine2","H_spine3","I_spine4","J_spine5","K_spine6","L_spine7", 'D_tailtip','C_tailbase']
+    for b in boi:
+        for j in ['x','y']:
+            xdifference = abs(mydata[b][j].diff())
+            xdiff_check = xdifference > p0     
+            mydata[b][j][xdiff_check] = np.nan
+        threshold = mydata[b]['likelihood'].quantile(.5)
+        lik_check = mydata[b]['likelihood'] > threshold
+        mydata[b]['likelihood'][lik_check] = np.nan
+    spine_column=["A_head", "F_spine1","G_spine2","H_spine3","I_spine4","J_spine5","K_spine6","L_spine7",'D_tailtip','C_tailbase']
+    perm = permutations(spine_column, 2)
+    for i in list(perm):
+        rel_dist = mydistance(coords(mydata[i[0]]),coords(mydata[i[1]]))
+        print(mydata[i[0]])
+        rel_dist_check = rel_dist < 5
+        mydata[rel_dist_check] = np.nan 
+    return(mydata) 
+
+duration = 15
+fps = 40
+fig, ax = plt.subplots()
+              
+def make_frame(data, time):
+    timeint = int(time*fps)+ 6000
+    ax.clear()
+    x = data['A_head']['x'][timeint]
+    y = data['A_head']['y'][timeint]
+    ax.plot(x,y,'o')
+    x = data['F_spine1']['x'][timeint]
+    y = data['F_spine1']['y'][timeint]
+    ax.plot(x,y,'o')
+    x = data['G_spine2']['x'][timeint]
+    y = data['G_spine2']['y'][timeint]
+    ax.plot(x,y,'o')
+    x = data['H_spine3']['x'][timeint]
+    y = data['H_spine3']['y'][timeint]
+    ax.plot(x,y,'o')
+    x = data['I_spine4']['x'][timeint]
+    y = data['I_spine4']['y'][timeint]
+    ax.plot(x,y,'o')
+    x = data['I_spine4']['x'][timeint]
+    y = data['I_spine4']['y'][timeint]
+    ax.plot(x,y,'o')
+    x = data['J_spine5']['x'][timeint]
+    y = data['J_spine5']['y'][timeint]
+    ax.plot(x,y,'o')
+    x = data['K_spine6']['x'][timeint]
+    y = data['K_spine6']['y'][timeint]
+    ax.plot(x,y,'o')
+    x = data['L_spine7']['x'][timeint]
+    y = data['L_spine7']['y'][timeint]
+    ax.plot(x,y,'o')
+    ax.set_ylim([0,500])
+    ax.set_xlim([0,500])
+    return mplfig_to_npimage(fig)
+
+animation = VideoClip(make_frame, duration = duration)
+animation.write_gif('matplotlib2.gif', fps = 40)
+
+    
+    
+#%%
+def Combine_rotate(data):
+    n = data.shape[0]
+    ## transfer spline data to point vector
+    spline_point = []
+    x_index = [0, 15, 18, 21, 24, 27, 30, 33]
+    y_index = [1, 16, 19, 22, 25, 28, 31, 34]
+    x = data.iloc[:,x_index]
+    y = data.iloc[:,y_index]
+    spline_point = np.column_stack([x,y])
+    
+    ## reference vector
+    head = np.column_stack([data.iloc[:,0],data.iloc[:,1]]) # dim = 216059, 2
+    spline1 = np.column_stack([data.iloc[:,15],data.iloc[:,16]])
+    # dim = 216059, 2
+    head_r = head-spline1 # reference vector to x axis
+    
+    ##  rotation matrix 
+    norm = np.linalg.norm(head_r)
+#    for i in range(len(head_r)):
+#        norm.append(np.linalg.norm(head_r[i]))
+    norm = np.array(norm)
+    angle = np.column_stack([head_r[:,0]/norm, head_r[:,1]/norm])
+    angle2 = np.column_stack([-angle[:,1],angle[:,0]])
+    rot_matrix = np.column_stack([angle,angle2])
+   
+    ## rotate point coordinates
+    spline_rotate = []
+    
+    for i in range(n):
+        x = []
+        for j in spline_point[i].reshape((8,2), order = "F"):
+            x.append((np.dot(rot_matrix[i].reshape(2,2),j-spline1[i])))
+        spline_rotate.append(x)
+    
+    return(spline_rotate)
+
+def Combine_curv(data):
+    curvature=[]
+    spline_info=[]
+    for i in np.arange(len(data)):
+        test_point = data.iloc[i,:]
+        x = test_point[[0, 15, 18, 21, 24, 27, 30, 33]]
+        y = test_point[[1, 16, 19, 22, 25, 28, 31, 34]]
+        pts=np.vstack([x,y]).T
+        pts=pts[~np.isnan(pts).any(axis=1)]
+        if(pts.shape[0]>=4):
+            tck,u=interpolate.splprep(pts.T, u=None, s=0.0)
+            spline_info.append([tck,u])
+            dx1,dy1=interpolate.splev(u,tck,der=1)#why is this only a first order derivative?
+            dx2,dy2=interpolate.splev(u,tck,der=2)# and this a second order?
+            k=(dx1*dy2-dy1*dx2)/np.power((np.square(dx1)+np.square(dy1)),3/2)
+            max_k=abs(k).max()
+            curvature.append(max_k)
+            u_new = np.linspace(u.min(), u.max(), 1000)
+            x_new, y_new = interpolate.splev(u_new, tck, der=0)
+            plt.figure()
+            plt.plot(pts[:,0], pts[:,1], 'ro')
+            plt.plot(x_new, y_new, 'b--')
+            plt.show()
+        else:
+            curvature.append(np.nan)
+            spline_info.append(np.nan)
+    return(curvature)
+    
+
 
 #%%
 # Measuring Gaze and Orientation
@@ -257,6 +525,25 @@ def orientation2(data_auto):
     cos_angle = np.array(cos_angle)
     
     return cos_angle
+
+def heading_angle(data_auto_arg):
+    '''
+    Function looks at orientation of the fish across a trial. It takes in teh dataframe and returns the 
+    orientation for each frame. A degree of East = 0, North = 90, West = 180, South = 270
+    '''
+    # First collect all parts of interest:
+    poi = ['zeroed']
+    origin = pd.DataFrame(0.,index = data_auto_arg[poi[0]]['x'].index, columns = ['x','y'])
+    distone = pd.Series(1, index = data_auto_arg[poi[0]]['x'].index)
+    plusx = origin['x'] + 1
+    plusy = origin['y']
+    HO = mydistance(coords(data_auto_arg[poi[0]]), coords(origin))
+    OP = distone
+    PH  = mydistance(coords(data_auto_arg[poi[0]]),(plusx, plusy))
+
+    
+    out = lawofcosines(HO, OP, PH)
+    return out
 
 def gaze_tracking(fish1,fish2):
     """
@@ -356,6 +643,50 @@ data_auto1_filt,data_auto2_filt = getfiltereddata_2(h5_files)
 
 #%%
 
+data_auto2_filt = data_auto1_filt[:100]
+
+#%%
+data_auto2_filt['zeroed','x'] = data_auto2_filt['A_head']['x'] - midpoint(data_auto2_filt['B_rightoperculum']['x'], data_auto2_filt['B_rightoperculum']['y'], data_auto2_filt['E_leftoperculum']['x'], data_auto2_filt['E_leftoperculum']['y'])[0]
+data_auto2_filt['zeroed','y'] = data_auto2_filt['A_head']['y'] - midpoint(data_auto2_filt['B_rightoperculum']['x'], data_auto2_filt['B_rightoperculum']['y'], data_auto2_filt['E_leftoperculum']['x'], data_auto2_filt['E_leftoperculum']['y'])[1]
+    
+Test = pd.DataFrame()
+Test['orientation'] = (heading_angle(data_auto2_filt))
+Test['curve'] = Combine_curv(Combine_filter(data_auto2_filt))
+Test['operculum']= np.array(auto_scoring_get_opdeg(data_auto2_filt), dtype = "float64")
+# Test['speed'] = speed(data_auto2_filt)
+
+
+#%%
+Test = Test.fillna(method = 'bfill')
+
+x = StandardScaler().fit_transform(Test)
+
+pca = PCA()
+pca.fit(x)
+pcs=pca.transform(x)
+
+
+pcs=pcs[:,:2]
+pcs = np.clip(pcs,-3,3)
+plt.scatter(pcs[:,0],pcs[:,1],s = 1)
+#%%
+
+## kmeans clustering
+
+kmeans = KMeans(n_clusters=2, init='k-means++', max_iter=300, n_init=10)
+kmeans.fit(pcs)
+
+y=kmeans.predict(pcs)
+plt.scatter(pcs[:, 0], pcs[:, 1], c=y,s=1, cmap='viridis')
+#%%
+
+# using HMM to define clusters
+hmm_3=hmm.GaussianHMM(n_components=2, covariance_type="full", n_iter=100)
+hmm_3.fit(pcs)
+y=hmm_3.predict(pcs)
+plt.scatter(pcs[:, 0], pcs[:, 1], c=y,s=1, cmap='viridis')
+#%%
+
 # Creating a PCA & Performing kmeans
 
 ## Defining Operculum Features
@@ -382,15 +713,15 @@ data1.columns = ['Oper_Angle', 'Oper_Triangle', 'Oper_Max']
 #%%
 
 data = pd.DataFrame(data1).dropna() 
-data = data[80000:144000]
+data = data[88660:98660]
 
 data2 = data1.fillna(method="ffill")
 data2 = data2[88660:98660]
 
-from sklearn.preprocessing import StandardScaler
+
 x = StandardScaler().fit_transform(data2)
 
-from sklearn.decomposition import PCA
+
 pca = PCA()
 pca.fit(x)
 pcs=pca.transform(x)
@@ -398,6 +729,7 @@ pcs=pca.transform(x)
 
 pcs=pcs[:,:2]
 plt.scatter(pcs[:,1],pcs[:,0],s=1)
+
 #%%
 
 ## kmeans clustering

@@ -319,14 +319,10 @@ def tail_spline(rotate_points,r = 15, t1 = 10, t2 = 5):
     
 #%%
 
-# Yuyang's code. Does not do rotation, but does calculate a curvature. Finds a lot of error, but I think that's because he's not
-    # calculated the spine slpline but instead includes tail points
 
-# Way to combine Yuqi and Yuyang. Use Yuyang's filtering method on Yuqi defined points because it allows for np.nans, then
-# perform Yuqi's rotation metric on the filtered data. Then perform yuyang's curviture calc. do a ffill to get rid np.nan
-# align to orientation data and filter, then try a PCA on the data. Do a clustering analysis using the HMM from HMMlearn.
+# filtering with yuyang's method but need to play around with the distance that is best and creates the most accurate
+# spline
     
-# filtering
 def Combine_filter (data, p0 = 20  , p1 = 20):
     '''
     returns a whole dataframe with NANs according to general and specific spine criterion
@@ -356,7 +352,10 @@ def Combine_filter (data, p0 = 20  , p1 = 20):
     # mydata = mydata.fillna(method = 'ffill')
     return(mydata)
 #%%
-def Combine_filter_CE (data, p0 = 20  , p1 = 20):
+    
+## this I don't think is actually working!? I can't tell... need help. However I think the ideas
+## are there, as described in the function.
+def Combine_filter_CE (data, p0 = 20  , p1 = 5):
     '''
     
     This function filters  based on 1) jumps between frames, 2) the liklihood of the position, 3) the closeness of the points
@@ -379,53 +378,96 @@ def Combine_filter_CE (data, p0 = 20  , p1 = 20):
     for i in list(perm):
         rel_dist = mydistance(coords(mydata[i[0]]),coords(mydata[i[1]]))
         print(mydata[i[0]])
-        rel_dist_check = rel_dist < 5
+        rel_dist_check = rel_dist < p1
         mydata[rel_dist_check] = np.nan 
     return(mydata) 
-
-duration = 15
+#%%
+    
+## This block of code makes a video of the points for a certain duration of time. Duration = 10 means 10 seconds
+## of video. Fps is the frames per second. The # of frames you are using to make the video should be at least duration
+## times 40. The name of the dataframe should be entered into the function, at least for now.
+## make sure to change the name of the output video at least until everything is functionalized.
+    
+duration = 100
 fps = 40
 fig, ax = plt.subplots()
-              
-def make_frame(data, time):
-    timeint = int(time*fps)+ 6000
+
+def make_frame(time):
+    timeint = int(time*fps)
     ax.clear()
-    x = data['A_head']['x'][timeint]
-    y = data['A_head']['y'][timeint]
+    x = data_auto2_filt['A_head']['x'][timeint]
+    y = data_auto2_filt['A_head']['y'][timeint]
     ax.plot(x,y,'o')
-    x = data['F_spine1']['x'][timeint]
-    y = data['F_spine1']['y'][timeint]
+    x = data_auto2_filt['F_spine1']['x'][timeint]
+    y = data_auto2_filt['F_spine1']['y'][timeint]
     ax.plot(x,y,'o')
-    x = data['G_spine2']['x'][timeint]
-    y = data['G_spine2']['y'][timeint]
+    x = data_auto2_filt['G_spine2']['x'][timeint]
+    y = data_auto2_filt['G_spine2']['y'][timeint]
     ax.plot(x,y,'o')
-    x = data['H_spine3']['x'][timeint]
-    y = data['H_spine3']['y'][timeint]
+    x = data_auto2_filt['H_spine3']['x'][timeint]
+    y = data_auto2_filt['H_spine3']['y'][timeint]
     ax.plot(x,y,'o')
-    x = data['I_spine4']['x'][timeint]
-    y = data['I_spine4']['y'][timeint]
+    x = data_auto2_filt['I_spine4']['x'][timeint]
+    y = data_auto2_filt['I_spine4']['y'][timeint]
     ax.plot(x,y,'o')
-    x = data['I_spine4']['x'][timeint]
-    y = data['I_spine4']['y'][timeint]
+    x = data_auto2_filt['I_spine4']['x'][timeint]
+    y = data_auto2_filt['I_spine4']['y'][timeint]
     ax.plot(x,y,'o')
-    x = data['J_spine5']['x'][timeint]
-    y = data['J_spine5']['y'][timeint]
+    x = data_auto2_filt['J_spine5']['x'][timeint]
+    y = data_auto2_filt['J_spine5']['y'][timeint]
     ax.plot(x,y,'o')
-    x = data['K_spine6']['x'][timeint]
-    y = data['K_spine6']['y'][timeint]
+    x = data_auto2_filt['K_spine6']['x'][timeint]
+    y = data_auto2_filt['K_spine6']['y'][timeint]
     ax.plot(x,y,'o')
-    x = data['L_spine7']['x'][timeint]
-    y = data['L_spine7']['y'][timeint]
+    x = data_auto2_filt['L_spine7']['x'][timeint]
+    y = data_auto2_filt['L_spine7']['y'][timeint]
     ax.plot(x,y,'o')
+    
     ax.set_ylim([0,500])
     ax.set_xlim([0,500])
     return mplfig_to_npimage(fig)
 
 animation = VideoClip(make_frame, duration = duration)
-animation.write_gif('matplotlib2.gif', fps = 40)
+animation.write_videofile("unfilt_animation_100.mp4", fps=40)
 
-    
-    
+#%%
+
+## change so gives out just the points dataframe? (is it a dataframe?)
+pts_all = []
+x_all = []
+y_all = []
+def Combine_pts(data):
+    for i in np.arange(len(data)):
+        test_point = data.iloc[i,:]
+        x = test_point[[0, 15, 18, 21, 24, 27, 30, 33]]
+        y = test_point[[1, 16, 19, 22, 25, 28, 31, 34]]
+        pts=np.vstack([x,y]).T
+        pts=pts[~np.isnan(pts).any(axis=1)]
+        pts_all.append(pts)
+        print()
+        if(pts.shape[0]>=4):
+            tck,u=interpolate.splprep(pts.T, u=None, s=0.0)
+            u_new = np.linspace(u.min(), u.max(), 100)
+            x_new, y_new = interpolate.splev(u_new, tck, der=0)
+            x_all.append(x_new)
+            y_all.append(y_new)
+    return( x_all, y_all)
+#%%
+x_all, y_all = Combine_pts(Combine_filter_CE(data_auto2_filt))
+duration = 10
+fps = 40
+fig, ax = plt.subplots()
+
+def make_frame(time):
+    timeint = int(time*fps)
+    ax.clear()
+    ax.plot(x_all[timeint], y_all[timeint], 'b--')
+    ax.set_ylim([0,500])
+    ax.set_xlim([0,500])
+    return mplfig_to_npimage(fig)
+
+animation = VideoClip(make_frame, duration = duration)
+animation.write_videofile("filt_test.mp4", fps=40)
 #%%
 def Combine_rotate(data):
     n = data.shape[0]
@@ -643,7 +685,7 @@ data_auto1_filt,data_auto2_filt = getfiltereddata_2(h5_files)
 
 #%%
 
-data_auto2_filt = data_auto1_filt[:100]
+data_auto2_filt = data_auto1_filt[:1000]
 
 #%%
 data_auto2_filt['zeroed','x'] = data_auto2_filt['A_head']['x'] - midpoint(data_auto2_filt['B_rightoperculum']['x'], data_auto2_filt['B_rightoperculum']['y'], data_auto2_filt['E_leftoperculum']['x'], data_auto2_filt['E_leftoperculum']['y'])[0]

@@ -53,15 +53,14 @@ def auto_scoring_tracefilter_full(data,p=0.5,p_tail=15,p_head=5):
             orientation1=np.array([mydata[spine_column[i]]['x']-mydata[spine_column[i-1]]['x'],mydata[spine_column[i]]['y']-mydata[spine_column[i-1]]['y']]).T
             orientation2=np.array([mydata[spine_column[i]]['x']-mydata[spine_column[i-2]]['x'],mydata[spine_column[i]]['y']-mydata[spine_column[i-2]]['y']]).T
             orientation3=np.array([mydata[spine_column[i]]['x']-mydata[spine_column[i-3]]['x'],mydata[spine_column[i]]['y']-mydata[spine_column[i-3]]['y']]).T
-            orientation=np.copy(orientation1); mask=np.isnan(orientation)            #if the previous point is already na, check the vector to the second closest point
-            orientation[mask]=orientation2[mask]; mask=np.isnan(orientation)    # if it's also na,use next previous point ,and if the second closest point is also nan, stop here                        
+            orientation=np.copy(orientation1); mask=np.isnan(np.sum(orientation,axis=1))           #if the previous point is already na, check the vector to the second closest point
+            orientation[mask]=orientation2[mask]; mask=np.isnan(np.sum(orientation,axis=1))     # if it's also na,use next previous point ,and if the second closest point is also nan, stop here                        
             orientation[mask]=orientation3[mask]; mask=np.isnan(orientation) #if the previous 3 points are all NA, just.....don't use it for safety reason.
-            orientation[mask]=-baseline[mask]
-            
+            safety_check=np.sum(mask,axis=1)!=0
             #if the baseline contains nan, skip this step
             inner_product =np.sum(baseline*orientation,axis=1)
             cos=inner_product/np.sqrt(np.sum(baseline*baseline,axis=1))/np.sqrt(np.sum(orientation*orientation,axis=1))
-            angle=np.arccos(cos)/np.pi*180;angle_check=np.logical_and(np.invert(np.isnan(angle)),angle>75)            
+            angle=np.arccos(cos)/np.pi*180;angle_check=np.logical_or(np.logical_and(np.invert(np.isnan(angle)),angle>75),safety_check)          
             mydata.loc[angle_check,(c,'x')]=np.nan; mydata.loc[angle_check,(c,'y')]=np.nan           
     #check the orientation of head-spine1 in the end, I want to skip this step first, but some spline looks weird
     #so i implemented it, now the plot is better but the code looks weird

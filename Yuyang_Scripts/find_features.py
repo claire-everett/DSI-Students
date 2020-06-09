@@ -26,6 +26,7 @@ class features():
         '''
         self.starttime=starttime
         self.duration=duration
+        
     def fit(self,filtered_df):
         #compute operculum angle and orientation
         starttime=self.starttime

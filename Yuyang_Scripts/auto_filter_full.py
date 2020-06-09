@@ -9,6 +9,15 @@ Created on Thu Jun  4 13:06:14 2020
 import numpy as np
 import pandas as pd
 
+def get_data(h5_files):
+    file_handle1 = h5_files[0]
+
+    with pd.HDFStore(file_handle1,'r') as help1:
+        data_auto1 = help1.get('df_with_missing')
+        data_auto1.columns= data_auto1.columns.droplevel()
+
+    return data_auto1
+
 def auto_scoring_tracefilter_full(data,p=0.5,p_tail=15,p_head=5):
     #remove the not close to origin check(i don't know the meaning of it currently)
     mydata = data.copy()

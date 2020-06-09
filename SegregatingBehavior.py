@@ -621,7 +621,6 @@ def speed (data, fps = 40):
     disty = Ycoords.diff()
     TotalDist = np.sqrt(distx**2 + disty**2)
     Speed = TotalDist / (1/fps) #converts to seconds
-#    
     return Speed
 
 def turning_angle(data_auto):

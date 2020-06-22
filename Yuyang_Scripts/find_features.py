@@ -95,7 +95,7 @@ class Feature_extraction():
             y=trunc_df.loc[:,[('A_head','y'),("F_spine1","y"),("G_spine2","y"),
                             ("H_spine3","y"),("I_spine4","y"),("J_spine5","y"),
                             ("K_spine6","y"),("L_spine7","y")]]
-            x=trucn_df.loc[:,[('A_head','x'),("F_spine1","x"),("G_spine2","x"),
+            x=trunc_df.loc[:,[('A_head','x'),("F_spine1","x"),("G_spine2","x"),
                             ("H_spine3","x"),("I_spine4","x"),("J_spine5","x"),
                             ("K_spine6","x"),("L_spine7","x")]]
         #By first stacking the data we want to a 3D array, the running time decreases significantly!

@@ -11,89 +11,205 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import interpolate 
-class features():
+from auto_filter_full import  auto_scoring_tracefilter_full, transform_data,filter_tailbeating
+class Feature_extraction():
+    
     '''
+    #extract feature from given period
     #function to compare the cluster outputs of different features, the visualization is ultilized on the scatter plot of orientation and operculum angle
     #requires filtered df has the same schema as that predefined filtered_df, which should contain column
     #'A_head',"F_spine1",'mid_spine1_spine2',"G_spine2",'mid_spine2_spine3',"H_spine3","I_spine4","J_spine5","K_spine6","L_spine7","B_rightoperculum",
     #'E_leftoperculum'
     '''
     
-    def __init__(self,starttime=100000,duration=60):
+    def __init__(self,starttime=100000,endtime=None,duration=60):
         '''
         starttime: starttime of the period use
         duration: the duration of the period, the data will be sliced from starttime:starttime+40*duration
         '''
         self.starttime=starttime
         self.duration=duration
+        if endtime==None:
+            endtime=starttime+40*duration
+        self.endtime=endtime
         
-    def fit(self,filtered_df):
-        #compute operculum angle and orientation
+    def filter_df(self,raw_df,add_midpoint=True):
+        '''
+       
+        Parameters
+        ----------
+        raw_df : TYPE 
+            DESCRIPTION. Input raw DataFrame
+        add_midpoint : TYPE, optional
+            DESCRIPTION.  True:Yuyang's method, which will add 2 more columns(midpoint of spine1-spine2, and midpoint of spine2-spine3)
+            False:Yuqi's method'
+
+        Returns 
+        -------
+        filtered data
+        '''
+
+        if add_midpoint:
+            df=transform_data(raw_df)
+            return auto_scoring_tracefilter_full(df)
+        else:
+            return filter_tailbeating(raw_df)
+            
+        
+    def fit(self,filtered_df,filter_feature=True,fill_na=True,estimate_na=True):
+        '''
+       this function computes all the features we have thought about
+        Parameters
+        ----------
+        filtered_df : dataframe
+            filtered dataframe
+        filter_feature: filter out extreme points in the feature calculated, basically it removes points which violates the 
+        3 /sigma rule
+        fill_na: whether to fill na after the features are calculated
+        estimate_na: whether to estimate the nas before fitting the spline, assuming the missing point is on the line of it's
+        previous and next available point
+
+        Returns 
+        -------
+      
+        '''
         starttime=self.starttime
-        duration=self.duration
-        operculum=auto_scoring_get_opdeg(filtered_df)
-        operculum=operculum.fillna(method="ffill")
-        operculum=operculum[starttime:starttime+duration*40]
-        ori=orientation(filtered_df)
-        ori=pd.Series(ori).fillna(method='ffill')
-        ori=ori[starttime:starttime+duration*40]
-        curvatures=[]
-        baseline=np.array([filtered_df['mid_spine1_spine2']['x']-filtered_df['F_spine1']['x'],filtered_df['mid_spine1_spine2']['y']-filtered_df['F_spine1']['y']]).T
-        cos_derivative_baseline=[]
-    #calculate the 3 features(curvature/diff_curvature/cos between the tangent line and baseline(spine1->spine1.5))
-        for i in range(starttime,starttime+duration*40):
-            line=baseline[i,:]
-            y=filtered_df.loc[i,[('A_head','y'),("F_spine1","y"),('mid_spine1_spine2',"y"),("G_spine2","y"),
+        endtime=self.endtime
+        trunc_df=filtered_df.loc[starttime:endtime-1,:]
+        operculum=auto_scoring_get_opdeg(trunc_df)
+        
+        ori=orientation(trunc_df)
+    
+        turn_angle=turning_angle_spine(trunc_df)
+        
+        mov_speed=speed(trunc_df)
+        
+        if "mid_spine1_spine2" in filtered_df.columns:
+            y=trunc_df.loc[:,[('A_head','y'),("F_spine1","y"),('mid_spine1_spine2',"y"),("G_spine2","y"),
                             ('mid_spine2_spine3',"y"),("H_spine3","y"),("I_spine4","y"),("J_spine5","y"),
                             ("K_spine6","y"),("L_spine7","y")]]
-            x=filtered_df.loc[i,[('A_head','x'),("F_spine1","x"),('mid_spine1_spine2',"x"),("G_spine2","x"),
+            x=trunc_df.loc[:,[('A_head','x'),("F_spine1","x"),('mid_spine1_spine2',"x"),("G_spine2","x"),
                             ('mid_spine2_spine3',"x"),("H_spine3","x"),("I_spine4","x"),("J_spine5","x"),
                             ("K_spine6","x"),("L_spine7","x")]]
-            pts=np.vstack([x,y]).T
-            index=~np.isnan(pts).any(axis=1)
-            pts=pts[index]
-            curvature=np.repeat(np.nan,10)
-            cos=np.repeat(np.nan,10)
-            if(pts.shape[0]>=4):
-                tck,u=interpolate.splprep(pts.T, u=None, s=0.0)
-                dx1,dy1=interpolate.splev(u,tck,der=1)
-                dx2,dy2=interpolate.splev(u,tck,der=2)
-                k=(dx1*dy2-dy1*dx2)/np.power((np.square(dx1)+np.square(dy1)),3/2)
-                cos_=(dy1*line[1]+dx1*line[0])/np.linalg.norm(line)/np.sqrt(dy1*dy1+dx1*dx1)
-                cos[index]=cos_
-                curvature[index]=k
-                curvatures.append(curvature)
-                cos_derivative_baseline.append(cos)
-            else:
-                curvatures.append(curvature)
-                cos_derivative_baseline.append(cos)
-        
-        
-            
-        #deal with the NAs in the feature
-        curvatures=np.array(curvatures); curvatures=np.vstack(curvatures);curvatures=pd.DataFrame(curvatures)
-        filled_curvatures=curvatures.fillna(method='ffill'); filled_curvatures=curvatures.fillna(curvatures.mean())
-        cos_derivative_baseline=pd.DataFrame(np.vstack(np.array(cos_derivative_baseline)))
-        filled_cos=cos_derivative_baseline.fillna(method='ffill').fillna(cos_derivative_baseline.mean())
+        else:
+            y=trunc_df.loc[:,[('A_head','y'),("F_spine1","y"),("G_spine2","y"),
+                            ("H_spine3","y"),("I_spine4","y"),("J_spine5","y"),
+                            ("K_spine6","y"),("L_spine7","y")]]
+            x=trucn_df.loc[:,[('A_head','x'),("F_spine1","x"),("G_spine2","x"),
+                            ("H_spine3","x"),("I_spine4","x"),("J_spine5","x"),
+                            ("K_spine6","x"),("L_spine7","x")]]
+        #By first stacking the data we want to a 3D array, the running time decreases significantly!
+        #using for gives almost same run time
+        concat_array=np.stack((x,y),axis=-1)
+        if estimate_na:
+            #give estimate to na's in 
+            concat_array=np.array(list(map(self.linearly_fill_data,concat_array)))
+        map_results=np.array(list(map(self.cal_curvature_and_dir,concat_array)))
+        curvatures=pd.DataFrame(map_results[:,0,:])
+        cos=pd.DataFrame(map_results[:,1,:])
         diff_curvature=pd.DataFrame(np.diff(curvatures,axis=0,prepend=np.expand_dims(curvatures.loc[0,:],0)))
-        diff_curvature=diff_curvature.fillna(method='ffill'); diff_curvature=diff_curvature.fillna(diff_curvature.mean())
-    
-        self.filled_curvatures=filled_curvatures
-        self.filled_cos=filled_cos
+        if "mid_spine1_spine2" in filtered_df.columns:
+            curvatures.columns=["curvature_head","curvature_spine1","curvature_spine1.5","curvature_spine2","curvature_spine2.5","curvature_spine3",
+              "curvature_spine4","curvature_spine5","curvature_spine6","curvature_spine7"]
+            diff_curvature.columns=["diff_curvature_head","diff_curvature_spine1","diff_curvature_spine1.5","diff_curvature_spine2","diff_curvature_spine2.5","diff_curvature_spine3",
+              "diff_curvature_spine4","diff_curvature_spine5","diff_curvature_spine6","diff_curvature_spine7"]
+            cos.columns=["tangent_head","tangent_spine1","tangent_spine1.5","tangent_spine2","tangent_spine2.5","tangent_spine3",
+              "tangent_spine4","tangent_spine5","tangent_spine6","tangent_spine7"]
+        else:
+            curvatures.columns=["curvature_head","curvature_spine1","curvature_spine2","curvature_spine3",
+              "curvature_spine4","curvature_spine5","curvature_spine6","curvature_spine7"]
+            diff_curvature.columns=["diff_curvature_head","diff_curvature_spine1","diff_curvature_spine2","diff_curvature_spine3",
+              "diff_curvature_spine4","diff_curvature_spine5","diff_curvature_spine6","diff_curvature_spine7"]
+            cos.columns=["tangent_head","tangent_spine1","tangent_spine2","tangent_spine3",
+              "tangent_spine4","tangent_spine5","tangent_spine6","tangent_spine7"]
+        if filter_feature:
+            #filter feature according to "3 sigma" rule, that is, I assume the features follows normal distribution, and 
+            # I filter out points where it's distance to its mean is greater than 3xstd
+            operculum[abs(operculum-np.nanmean(operculum,axis=0))>3*np.nanstd(operculum,axis=0)]=np.nan
+            ori[abs(ori-np.nanmean(ori,axis=0))>3*np.nanstd(ori,axis=0)]=np.nan
+            turn_angle[abs(turn_angle-np.nanmean(turn_angle,axis=0))>3*np.nanstd(turn_angle,axis=0)]=np.nan
+            mov_speed[abs(mov_speed-np.nanmean(mov_speed,axis=0))>3*np.nanstd(mov_speed,axis=0)]=np.nan
+            curvatures[abs(curvatures-np.nanmean(curvatures,axis=0))>3*np.nanstd(curvatures,axis=0)]=np.nan
+            diff_curvature[abs(diff_curvature-np.nanmean(diff_curvature,axis=0))>3*np.nanstd(diff_curvature,axis=0)]=np.nan
+            cos[abs(cos-np.nanmean(cos,axis=0))>3*np.nanstd(cos,axis=0)]=np.nan
+            
+        #then deal with the NAs in the feature
+        if fill_na==True:       
+            curvatures=curvatures.fillna(method='ffill'); curvatures=curvatures.fillna(curvatures.mean())
+            cos=cos.fillna(method='ffill').fillna(cos.mean())
+            diff_curvature=diff_curvature.fillna(method='ffill'); diff_curvature=diff_curvature.fillna(diff_curvature.mean())
+            operculum=operculum.fillna(method="ffill").fillna(operculum.mean())
+            ori=pd.Series(ori).fillna(method='ffill').fillna(np.nanmean(ori))
+            mov_speed=pd.Series(mov_speed).fillna(method="ffill").fillna(np.nanmean(mov_speed))
+            turn_angle=pd.Series(turn_angle).fillna(method="ffill").fillna(np.nanmean(turn_angle))
+        self.curvatures=curvatures
+        self.cos=cos
+        self.curvatures=curvatures
         self.diff_curvature=diff_curvature
         self.operculum=operculum
         self.ori=ori
+        self.mov_speed=mov_speed
+        self.turn_angle=turn_angle
+    
+    def linearly_fill_data(self,x):
+        ##Yuqi's code, filter step is skipped, I will just show na in the curvatures computed
+        not_na = np.unique(np.where(~np.isnan(x))[0])
+        if (len(not_na)>=4):
+            h = not_na[0]
+            s1 = not_na[1]
+            if (h == 0) & (s1==1):
+                for j in range(len(not_na)):
+                    if j > 1:
+                        current = not_na[j]
+                        pre = not_na[j-1]
+                        point = current-pre
+                        if point > 1:
+                            #if there's point missing in consective samples for spline,fill the missing points in 
+                            #the middle with a linear estimate
+                            dx = x[current][0]-x[pre][0]
+                            dy = x[current][1]-x[pre][1]
+                            for k in range(1, point):
+                                x[pre+k][0] = x[pre][0]+k*dx/point
+                                x[pre+k][1] = x[pre][1]+k*dy/point
+        return x
+    def cal_curvature_and_dir(self,x):
+        pts=x
+        line=pts[2]-pts[1]
+        index=~np.isnan(pts).any(axis=1)
+        pts=pts[index]
+        curvature=np.repeat(np.nan,x.shape[0])
+        directions=np.repeat(np.nan,x.shape[0])
+        if(pts.shape[0]>=4):
+            tck,u=interpolate.splprep(pts.T, u=None, s=0.0)
+            dx1,dy1=interpolate.splev(u,tck,der=1)
+            dx2,dy2=interpolate.splev(u,tck,der=2)
+            k=(dx1*dy2-dy1*dx2)/np.power((np.square(dx1)+np.square(dy1)),3/2)
+            direction=(dy1*line[1]+dx1*line[0])/np.linalg.norm(line)/np.sqrt(dy1*dy1+dx1*dx1)
+            directions[index]=direction
+            curvature[index]=k
+        return [curvature,directions]
+    
+    def export_df(self):
+        #combine curvature/diff_curvature/tangent_angle and other features to one df
+        other_features=pd.DataFrame({"operculum":np.array(self.operculum),"orientation":self.ori,"movement_speed":np.array(self.mov_speed),
+                                     "turning_angle":self.turn_angle},index=self.curvatures.index)
+        curvatures=self.curvatures
+        diff_curvatures=self.diff_curvature
+        tangent=self.cos
+        return other_features,curvatures,diff_curvatures,tangent
+        
     def visualize_cluster(self,num_cluster=2,dpi=300,s=2,cmap='cividis'):
         '''
         dpi: the resolution of image?
         num_cluster: the number of cluster in kmeans
         s:size of pts
         cmap:cmap attribute in plt
+        NOT REVISED YET, DONT USE THAT
         '''
         #scale them
         from sklearn.preprocessing import StandardScaler
         operculum=self.operculum;ori=self.ori
-        filled_curvatures=self.filled_curvatures;diff_curvature=self.diff_curvature;filled_cos=self.filled_cos
+        filled_curvatures=self.curvatures;diff_curvature=self.diff_curvature;filled_cos=self.cos
         scaler = StandardScaler();scaler.fit(filled_curvatures);filled_curvatures=pd.DataFrame(scaler.transform(filled_curvatures))   
         scaler = StandardScaler();scaler.fit(diff_curvature); diff_curvature=pd.DataFrame(scaler.transform(diff_curvature))
         scaler = StandardScaler();scaler.fit(filled_cos);filled_cos=pd.DataFrame(scaler.transform(filled_cos)) 
@@ -122,3 +238,8 @@ class features():
         ax.scatter(x=operculum,y=ori,s=s, c=label_cos, cmap='cividis')
         ax.title.set_text("tangent line")
         print("cluster on {} groups".format(num_cluster))
+
+##The old name
+class features(Feature_extraction):
+    def  __init__(self,starttime=100000,endtime=None,duration=6):
+        super(features,self).__init__(starttime,endtime,duration)

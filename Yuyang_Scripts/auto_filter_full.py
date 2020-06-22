@@ -9,15 +9,6 @@ Created on Thu Jun  4 13:06:14 2020
 import numpy as np
 import pandas as pd
 
-def get_data(h5_files):
-    file_handle1 = h5_files[0]
-
-    with pd.HDFStore(file_handle1,'r') as help1:
-        data_auto1 = help1.get('df_with_missing')
-        data_auto1.columns= data_auto1.columns.droplevel()
-
-    return data_auto1
-
 def auto_scoring_tracefilter_full(data,p=0.5,p_tail=15,p_head=5):
     #remove the not close to origin check(i don't know the meaning of it currently)
     mydata = data.copy()
@@ -104,3 +95,44 @@ def transform_data(df):
     mid_spine2_spine3=pd.DataFrame(mid_spine2_spine3,columns=pd.MultiIndex.from_arrays(name_arr,names=["bodyparts",'coords']))
     df=pd.concat([df,mid_spine2_spine3],axis=1)
     return df
+
+def filter_tailbeating(data,p0=50,p_head = 30, p1=25, p2 = 10, t1 = 20):
+    # Yuyang's method
+    # check points location intervals
+    mydata = data.copy()
+#     boi = ['A_head','B_rightoperculum','E_leftoperculum',"F_spine1","G_spine2","H_spine3","I_spine4","J_spine5","K_spine6","L_spine7",'C_tailbase']
+#     for b in boi:
+#         for j in ['x','y']:
+#             xdifference = abs(mydata[b][j].diff())
+#             xdiff_check = xdifference > p0     
+#             mydata[b][j][xdiff_check] = np.nan
+    spine_column=["A_head","F_spine1","G_spine2","H_spine3","I_spine4","J_spine5","K_spine6","L_spine7"] #,'D_tailtip','C_tailbase']
+    for i,c in enumerate(spine_column):
+        # using the spine1 as the original points
+        if i == 0:
+            dist = np.sqrt(np.square(data[spine_column[i+1]]['x']-data[c]['x'])+np.square(data[spine_column[i+1]]['y']-data[c]['y']))
+            dist_check = dist > p_head
+            mydata[c]["x"][dist_check]  = np.nan
+            mydata[c]["y"][dist_check]  = np.nan
+        if (i>1 and i<(len(spine_column)-1)):
+            r_decision = False
+            dist1=np.sqrt(np.square(data[spine_column[i-1]]['x']-data[c]['x'])+np.square(data[spine_column[i-1]]['y']-data[c]['y']))
+            dist2=np.sqrt(np.square(data[spine_column[i+1]]['x']-data[c]['x'])+np.square(data[spine_column[i+1]]['y']-data[c]['y']))
+            # further check the relative position:
+            if i > 2:
+                dist3 = np.sqrt(np.square(data["F_spine1"]['x']-data[c]['x'])+np.square(data["F_spine1"]['y']-data[c]['y']))
+                if np.logical_or((dist3[0] > ((i-1)*p1+t1)),(dist3[0]<((i-3)*p2))):
+                    r_decision = True
+            dist_check= np.logical_or(((dist1>p1)|(dist2>p1)), r_decision)
+            mydata[c]["x"][dist_check] = np.nan
+            mydata[c]["y"][dist_check] = np.nan
+        if i==(len(spine_column)-1):
+            dist1=np.sqrt(np.square(data[spine_column[i-1]]['x']-data[c]['x'])+np.square(data[spine_column[i-1]]['y']-data[c]['y']))
+            dist2=np.sqrt(np.square(data[spine_column[i-2]]['x']-data[c]['x'])+np.square(data[spine_column[i-2]]['y']-data[c]['y']))
+            dist3 = np.sqrt(np.square(data["F_spine1"]['x']-data[c]['x'])+np.square(data["F_spine1"]['y']-data[c]['y']))
+            r_decision = np.logical_or(dist3[0]>((i-1)*p1), dist3[0]<((i-4)*p2))
+            dist_check=np.logical_or(((dist1>p1)|(dist2>p1)), r_decision)
+            mydata[c]["x"][dist_check] = np.nan
+            mydata[c]["y"][dist_check] = np.nan
+        
+    return mydata

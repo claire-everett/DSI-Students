@@ -33,7 +33,7 @@ class Feature_extraction():
             endtime=starttime+40*duration
         self.endtime=endtime
         
-    def filter_df(self,raw_df,add_midpoint=True):
+    def filter_df(self,raw_df,add_midpoint=True,p_head = 30,p_tail=15,angle_tol=75,p=0.5,p0=50,p1=25, p2 = 10, t1 = 20):
         '''
        
         Parameters
@@ -51,9 +51,9 @@ class Feature_extraction():
 
         if add_midpoint:
             df=transform_data(raw_df)
-            return auto_scoring_tracefilter_full(df)
+            return auto_scoring_tracefilter_full(df,p_head=p_head,p_tail=p_tail,p=p,angle_tol=angle_tol)
         else:
-            return filter_tailbeating(raw_df)
+            return filter_tailbeating(raw_df,p0=p0,p_head = p_head, p1=p1, p2 = p2, t1 = t1)
             
         
     def fit(self,filtered_df,filter_feature=True,fill_na=True,estimate_na=True):

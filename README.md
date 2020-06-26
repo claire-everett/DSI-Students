@@ -4,3 +4,5 @@ The .h5 files to begin playing with are found at https://drive.google.com/drive/
 Link to a paper linking brain activity to behavioral state https://science.sciencemag.org/content/364/6437/eaav8736.editor-summary
 
 I find an article that summarises methods for checking the goodness of fit for HMM models(Yuyang) https://www.maths.lancs.ac.uk/~titman/goodness_of_fit.pdf
+
+Presentation google slides version https://docs.google.com/presentation/d/1DEBSGDacI2a1_6SJ6AkDlhy2ZGgoc8w2/edit#slide=id.p26

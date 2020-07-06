@@ -209,7 +209,26 @@ def turning_angle(data_auto):
     mid_y = midpoint(data_auto['B_rightoperculum']['x'], data_auto['B_rightoperculum']['y'], data_auto['E_leftoperculum']['x'], data_auto['E_leftoperculum']['y'])[1]
     ##find the 
     cur_vec=np.vstack((head_x-mid_x,head_y-mid_y)).T
-    prev_vec=np.vstack((np.append((head_x-mid_x)[40:],np.repeat(np.nan,40)),np.append((head_y-mid_y)[40:],np.repeat(np.nan,40)))).T
+    prev_vec=np.vstack((np.repeat(np.nan,40),np.append((head_x-mid_x)[:-40]),np.append(np.repeat(np.nan,40),(head_y-mid_y)[40:]))).T
+    inner_product=np.sum(np.multiply(cur_vec,prev_vec),axis=1)
+    cur_norm=np.sum(np.multiply(cur_vec,cur_vec),axis=1)
+    prev_norm=np.sum(np.multiply(prev_vec,prev_vec),axis=1)
+    cos=inner_product/np.sqrt(cur_norm*prev_norm)
+    angle=np.arccos(cos)
+    return angle/np.pi*180
+def turning_angle_spine(data_auto):
+    spine1_x = data_auto["F_spine1"]["x"]
+    spine1_y = data_auto["F_spine1"]["y"]
+    
+    if "mid_spine1_spine2" in data_auto.columns:
+        spine1_5_x=data_auto["mid_spine1_spine2"]["x"]
+        spine1_5_y=data_auto["mid_spine1_spine2"]["y"]
+    else:
+        spine1_5_x=data_auto["G_spine2"]["x"]
+        spine1_5_y=data_auto["G_spine2"]["y"]
+    ##find the direction in the previous second
+    cur_vec=np.vstack((spine1_x-spine1_5_x,spine1_y-spine1_5_y)).T
+    prev_vec=np.vstack((np.append(np.repeat(np.nan,40),(spine1_x-spine1_5_x)[:-40]),np.append(np.repeat(np.nan,40),(spine1_y-spine1_5_y)[:-40]))).T
     inner_product=np.sum(np.multiply(cur_vec,prev_vec),axis=1)
     cur_norm=np.sum(np.multiply(cur_vec,cur_vec),axis=1)
     prev_norm=np.sum(np.multiply(prev_vec,prev_vec),axis=1)
@@ -244,3 +263,10 @@ def orientation(data_auto):
     angle[~det]=angle[~det]+180
     angle=np.minimum(angle,360-angle)
     return angle
+
+def compute_cos(x,y):
+    #x,y is a (n,2) vector, output a nx1 vector of cosine for each row
+    inner_product=np.sum(np.multiply(x,y),axis=1)
+    norm_x=np.sum(np.multiply(x,x),axis=1)
+    norm_y=np.sum(np.multiply(y,y),axis=1)
+    inner_product/np.sqrt(norm_x*norm_y)

@@ -105,7 +105,7 @@ Test['operculum'] = np.array(new_features.operculum)
 #orientation
 Test['orientation'] = np.array(new_features.ori)
 #curve_diff
-Test['curve_diff'] = np.array(new_features.diff_curvature[0])
+Test['curve_diff'] = np.array(new_features.diff_curvature[6])
 #Velocity
 Test['Velocity'] = np.array(speed(filtered_df)[starttime:starttime+(duration*40)])
 #Xlocation
@@ -114,18 +114,21 @@ Test['X_head'] = np.array(filtered_df['A_head']['x'][starttime:starttime+(durati
 
 Test = Test.fillna(method = 'bfill')
 Test = Test.fillna(method = 'ffill')
+
 #%%
 
 # #Test could also look like this, with all the curv diffs
 Test2 = pd.DataFrame(new_features.diff_curvature)
-Test2 = Test['operculum']
-Test2 = Test['orientation']
-Test2 = Test.fillna(method = 'bfill')
-Test2 = Test.fillna(method = 'ffill')
+Test2['operculum'] = Test['operculum']
+Test2['orientation'] = Test['orientation']
+Test2['Velocity'] = Test['Velocity']
+Test2['X_head'] = Test['X_head']
+Test2 = Test2.fillna(method = 'bfill')
+Test2 = Test2.fillna(method = 'ffill')
 
 #%%
-PCA_data = Test2.iloc
-data_scaled = StandardScaler().fit_transform(Test2)
+PCA_data = Test.iloc
+data_scaled = StandardScaler().fit_transform(Test)
 pca = PCA()
 pca.fit(data_scaled)
 pcs = pca.transform(data_scaled)
@@ -133,6 +136,12 @@ pcs = pca.transform(data_scaled)
 pcs = pcs[:,:2]
 pcs = np.clip(pcs, -3, 3)
 plt.scatter(pcs[:,0], pcs[:,1], s = 1)
+
+#%%
+
+#When the manual scoring says tailbeating, what does the curvature look like?
+
+
 
 #%%
 # Now incorporate the manual scoring of Elaine
@@ -169,9 +178,10 @@ data_manual1 = pd.read_excel(file_handle1)
 Manual1 = manual_scoring(data_manual1, data_auto1, crop0 = starttime, crop1 =  starttime+(duration*40))
 
 
+
 #%%
-Test['Manual'] = np.array(Manual1)
-data_scaled = StandardScaler().fit_transform(Test2)
+# Test['Manual'] = np.array(Manual1)
+data_scaled = StandardScaler().fit_transform(Test)
 pca = PCA()
 pca.fit(data_scaled)
 pcs = pca.transform(data_scaled)
@@ -179,8 +189,8 @@ pcs = pca.transform(data_scaled)
 
 pcs = pcs[:,:2]
 pcs = np.clip(pcs, -3, 3)
-plt.scatter(pcs[:,0], pcs[:,1], s = 1, c = Test['Manual'],cmap = 'cividis' )
-plt.legend(Test['Manual'])
+plt.scatter(pcs[:,0], pcs[:,1], s = 1, c = Manual1,cmap = 'cividis' )
+plt.legend(Manual1)
 
 #%%
 

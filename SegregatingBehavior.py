@@ -692,7 +692,7 @@ data_auto2_filt['zeroed','y'] = data_auto2_filt['A_head']['y'] - midpoint(data_a
     
 Test = pd.DataFrame()
 Test['orientation'] = (heading_angle(data_auto2_filt))
-Test['curve'] = Combine_curv(Combine_filter(data_auto2_filt))
+# Test['curve'] = Combine_curv(Combine_filter(data_auto2_filt))
 Test['operculum']= np.array(auto_scoring_get_opdeg(data_auto2_filt), dtype = "float64")
 # Test['speed'] = speed(data_auto2_filt)
 

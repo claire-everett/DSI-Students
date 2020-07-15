@@ -9,7 +9,7 @@ Created on Thu Jun  4 13:06:14 2020
 import numpy as np
 import pandas as pd
 
-def auto_scoring_tracefilter_full_CE(data,p=0.5,p_tail=15,p_head=5):
+def auto_scoring_tracefilter_full(data,p=0.5,p_tail=15,p_head=5):
     #remove the not close to origin check(i don't know the meaning of it currently)
     mydata = data.copy()
     spine_column=['A_head',"F_spine1",'mid_spine1_spine2',"G_spine2",'mid_spine2_spine3',"H_spine3","I_spine4","J_spine5","K_spine6","L_spine7","B_rightoperculum",

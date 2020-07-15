@@ -8,14 +8,17 @@ Created on Thu Feb 27 15:29:30 2020
 
 ## Loading the Data
 
-home_dir = '.'#'/Users/Claire/Desktop/Test'
-h5_files = sorted(glob(os.path.join(home_dir,'*.h5')))
-print(h5_files)
+# home_dir = '.'#'/Users/Claire/Desktop/Test'
+# h5_files = sorted(glob(os.path.join(home_dir,'*.h5')))
+# print(h5_files)
 
-## Packaged up some of the upload code. 
-data_auto1_filt,data_auto2_filt = getfiltereddata(h5_files)
+# ## Packaged up some of the upload code. 
+# data_auto1_filt,data_auto2_filt = getfiltereddata(h5_files)
 
 #Usefull functions, please read through
+import pandas as pd
+import numpy as np
+from tqdm import tqdm_notebook as tqdm
 
 def mydistance(pos_1,pos_2):
     '''
@@ -361,8 +364,119 @@ def auto_scoring_M2(data_auto,thresh_param0 = 70,thresh_param1 = 180,thresh_para
     return widthfilter_out
 
 
+## 4/27/19: Updated parameter list handling to accomodate arbitrary lists of lists, and reshape them in a way that can 
+## be iterated through intuitively. 
+def manip_paramlist(Plist):
+    '''
+    A function that takes in an arbitrary parameter list (list of lists) and returns a 2d array that can be iterated 
+    on directly. 
+    
+    Parameters: 
+    Plist [list]: a list of lists containing valid values for each parameter we consider. 
+    
+    Returns:
+    array: a 2d array containing all possible parameter combinations as rows.
+    array: a 2d array containing the relevant indices of all possible parameter combinations. 
+    '''
+    ## We will also return an array for indexing purposes:
+    Pindex = [np.arange(len(plist)) for plist in Plist]
+    
+    meshgrid,meshgrid_index = np.meshgrid(*Plist,indexing = 'ij'),np.meshgrid(*Pindex,indexing = 'ij') ## Returns a list of Nd arrays, where N is the number of lists we consider. 
+
+    Parray,Parray_index = np.array(meshgrid).T.reshape(-1,len(Plist)),np.array(meshgrid_index).T.reshape(-1,len(Plist))
+    return Parray,Parray_index
+
+## Takes together a function from automatic data -> binary scores, and a list of relevant parameters, as well as 
+## manual data and aforementioned automatically scored data
+
+def TS1_ROC(data_auto,params):
+    p0 = params[0]
+    p1 = params[1]
+    return auto_scoring_TS1(data_auto,p0,p1)
+
+def M2_ROC(data_auto,params):
+    p0 = params[0]
+    p1 = params[1]
+    p2 = params[2]
+    return auto_scoring_widthfilter(auto_scoring_TS1(data_auto, p0, p1), p2)
+
+def F_Auto(data_auto,params):
+    p0 = params[0]
+    p1 = params[1]
+    p2 = params[2]
+    p3 = params[3]
+    p4 = params[4]
+    p5 = params[5]
+    p6 = params[6]
+    return auto_scoring_TS1(auto_scoring_tracefilter(data_auto, p2, p3, p4, p5, p6), p0, p1)
+
+def F_Auto_M2(data_auto,params):
+    p0 = params[0]
+    p1 = params[1]
+    p2 = params[2]
+    p3 = params[3]
+    p4 = params[4]
+    p5 = params[5]
+    p6 = params[6]
+    p7 = params[7]
+    return auto_scoring_widthfilter(auto_scoring_TS1(auto_scoring_tracefilter(data_auto, p3, p4, p5, p6, p7), p0, p1), p2)
+
+
+# ##### Defining Generalizable ROC Generating Functions
+
+
+
+def ROC_Analysis_vec(func,Plist,data_manual,data_auto):
+    
+    ## Reshape Plist to accept all combinations: 
+    Parray,Parray_index = manip_paramlist(Plist)
+    
+    Plist_shape = [len(plist) for plist in Plist]
+    FPR = np.zeros(Plist_shape)
+    TPR = np.zeros(Plist_shape)
+    FDR = np.zeros(Plist_shape)
+    Pr = np.zeros(Plist_shape)
+    YoudenR = np.zeros(Plist_shape)
+    
+    ## Process manual data once: 
+    data_manual_open = manual_scoring(data_manual,data_auto)
+    
+    for ip,params in tqdm(enumerate(Parray)):
+        data_auto_open = func(data_auto,params)
+
+        TP_vec = data_manual_open.values*data_auto_open.values[:-1]
+
+        TP = sum(abs(TP_vec))
+
+        TotalPos = data_auto_open.sum()
+        FP = TotalPos - TP
+        FP
+
+        TN_vec = (1-data_manual_open.values)*(1-data_auto_open.values)[:-1]
+
+        TN = sum(abs(TN_vec))
+
+
+        TotalNeg = len(data_auto_open) - TotalPos
+        FN = TotalNeg - TN
+        FN
+
+        TPR1 = TP / (TP + FN)
+        FPR1 = FP/(FP + TN)
+        Precision1 = TP/(TP + FP)
+        FalseDiscovery1 = FP/(FP + TP) 
+        Spec = TN/(TN + FP)
+        Youden = TPR1+Spec-1
+
+        FPR[tuple(Parray_index[ip,:])] = FPR1
+        TPR[tuple(Parray_index[ip,:])] = TPR1
+        FDR[tuple(Parray_index[ip,:])] = FalseDiscovery1
+        Pr[tuple(Parray_index[ip,:])] = Precision1
+        YoudenR[tuple(Parray_index[ip,:])] = Youden
+        print(Pr)
+        
+
+    return TPR,FPR,Pr,FDR,YoudenR
 
 
 ## Take the filtered tracked points, and return orientation, opercula angles. 
-angle1 = gaze_tracking(data_auto1_filt,data_auto2_filt)
-angle2 = gaze_tracking(data_auto2_filt,data_auto1_filt)

@@ -21,7 +21,7 @@ image = 'test.png'
 
 bgFrame = cv2.imread(image) # NN: reads image within backgroundImage folder
 bgGray = cv2.cvtColor(bgFrame, cv2.COLOR_BGR2GRAY) # NN: convert to grayscale
-backgroundFrame = cv2.GaussianBlur(bgGray, (myutil.ksize, myutil.ksize), 0)  ## NN: Blurs image
+backgroundFrame = cv2.GaussianBlur(bgGray, (100, 100), 0)  ## NN: Blurs image
 
 #%%
 # create a greyscale using the background image, makes a video
@@ -132,10 +132,11 @@ while camera.isOpened() and grabbed and (counters.frame <= myutil.fps * 5 * 60):
             cy = int(M['m01']/M['m00'])
             # test if 'rat' is in box and is big enough
             if cv2.contourArea(c) > myutil.min_area:
-                newArea = cv2.contourArea(c)
-                if newArea > oldArea:
-                    cnt = c
-                    oldArea = newArea
+                if cv2.contourArea(c) < myutil.max_area:
+                    newArea = cv2.contourArea(c)
+                    if newArea > oldArea:
+                        cnt = c
+                        oldArea = newArea
             else:
                 counters.noCountour = counters.noCountour + 1
                 cnt = c

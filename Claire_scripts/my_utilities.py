@@ -6,13 +6,11 @@ video_size = 1000
 fps = 40    # NN: raspi camera default frame rate = 30 fps
 
 # parameters to detect rat presence
-min_area = 50 # 200, minimum size (in pixels) for a region of an image to be considered a rat, arbitrary
-threshold = 40 # 40-60, threshold for fixed-level thresholding, value is critical if it is too high, get drop-outs
-ksize = 21     # Gaussian blur parameter, higher values wash out the tail resulting in a better position for the centroid
+min_area = 2000 # 200, minimum size (in pixels) for a region of an image to be considered a rat, arbitrary
+max_area = 3000
+threshold = 58 # 40-60, threshold for fixed-level thresholding, value is critical if it is too high, get drop-outs
+ksize = 21   # Gaussian blur parameter, higher values wash out the tail resulting in a better position for the centroid
 
-# box colors
-boxGray1 = (200, 200, 200)
-boxGray2 = (140, 140, 140)
 
 class Bunch:
     def __init__(self, **kwds):

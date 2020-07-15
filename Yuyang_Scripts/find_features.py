@@ -51,7 +51,7 @@ class Feature_extraction():
 
         if add_midpoint:
             df=transform_data(raw_df)
-            return auto_scoring_tracefilter_full(df,p_head=p_head,p_tail=p_tail,p=p,angle_tol=angle_tol)
+            return auto_scoring_tracefilter_full(df,p_head=p_head,p_tail=p_tail,p=p)
         else:
             return filter_tailbeating(raw_df,p0=p0,p_head = p_head, p1=p1, p2 = p2, t1 = t1)
             

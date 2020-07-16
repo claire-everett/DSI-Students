@@ -17,6 +17,7 @@ import seaborn as sns; sns.set()
 from DSI_UsefulFunctions import mydistance, lawofcosines, speed, myvelocity,  midpointx, manual_scoring,coords, auto_scoring_get_opdeg, auto_scoring_smooth_opdeg,auto_scoring_widthfilter, auto_scoring_tracefilter,auto_scoring_TS1, auto_scoring_M2, manip_paramlist, TS1_ROC, M2_ROC, F_Auto, F_Auto_M2, ROC_Analysis_vec   
 #%%
 ## Load Auto and Manual Data
+
 #Auto
 h5_dir = '/Users/Claire/Desktop/FishBehavioralAnalysis'
 h5_files = glob(os.path.join(h5_dir,'*.h5'))
@@ -40,11 +41,14 @@ data_manual = pd.read_excel(file_handle)
 #%%
 
 ## Perform Heatmap analysis
-# first crop the data to feasible analysis size
-data_auto_crop = data_auto.copy()[:1400]
+# first crop the auto data to feasible analysis size
+data_auto_crop = data_auto.copy()
+
+#creates an empty df to later fill with different binary arrays
 Compare = pd.DataFrame(0, index=np.arange(len(data_auto_crop)), columns = ['Manual', 'Automatic','M2','F_Auto', 'F_Auto_M2'])
 #%%
-Compare['Manual'] = manual_scoring(data_manual,data_auto_crop, crop0 = 0, crop1 = 1400)
+#create binary rays 1 = oper open, 0 = oper closed, using different methods
+Compare['Manual'] = manual_scoring(data_manual,data_auto_crop, crop0 = 0, crop1 = -1)
 Compare['Automatic'] = auto_scoring_TS1(data_auto_crop, 65, 135)
 Compare['M2'] =  auto_scoring_M2(data_auto_crop,65,135,10)
 Compare['F_Auto'] = auto_scoring_TS1(auto_scoring_tracefilter(data_auto_crop), 65, 135)
@@ -56,6 +60,8 @@ ax = sns.heatmap(Compare)
 Plist = [np.linspace(40,180,100),np.linspace(80,180,10)]
 ROCoutputTS1 = ROC_Analysis_vec(TS1_ROC,Plist,data_manual,data_auto)
 
+#%%
+#Plot analysis
 TPR = ROCoutputTS1[0]
 FPR = ROCoutputTS1[1]
 Youden = ROCoutputTS1[4]

@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from scipy import interpolate 
 from scipy import misc
 from hmmlearn import hmm
-from auto_filter_full_CE import  auto_scoring_tracefilter_full, transform_data
+from auto_filter_full_CE import  auto_scoring_tracefilter_full_CE, transform_data
 from find_features_CE import features
 from moviepy.editor import VideoFileClip, VideoClip, clips_array
 from moviepy.video.io.bindings import mplfig_to_npimage
@@ -22,11 +22,10 @@ import moviepy.video.compositing as mp
 import gizeh
 import os
 from glob import glob
-from functions_test import binarize_Op_2, manual_scoring
 #%%
 # Load the data
 
-home_dir = '.'#'/Users/Claire/Desktop/FishBehaviorAnalysis'
+home_dir = '/Users/Claire/Desktop/FishBehavioralAnalysis'#'/Users/Claire/Desktop/FishBehaviorAnalysis'
 h5_files = sorted(glob(os.path.join(home_dir,'*.h5')))
 file_handle1 = h5_files[0]
 
@@ -40,11 +39,10 @@ duration = len(data_auto1)
 new_features=features(starttime=starttime,duration=duration)
 
 #%%
-
-# Filtering data and extracting features
-
 filtered_df=new_features.filter_df(data_auto1)
 
+<<<<<<< HEAD
+<<<<<<< HEAD
 new_features.fit(filtered_df,filter_feature=True,fill_na=True,estimate_na=False)
 
 #%%
@@ -60,7 +58,7 @@ Rates = []
 # binarize and calculate rate for each column
 
 for i in np.arange(len(Looped.columns)):
-    binarized_col = binarize_Op_2(Looped[Looped.columns[i]], threshold = 70)
+    binarized_col = binarize_Op_2(Looped[Looped.columns[i]], lb = 65, ub = 135)
     bin_col_sum = (binarized_col == 1).sum()
     Rate = bin_col_sum/len(binarized_col)
     Rates.append(Rate)
@@ -121,36 +119,12 @@ for i in np.arange(len(Looped_Manual.columns)):
 ## MANUAL SCORING
 
 plt.plot(Rates_manual)
+=======
+>>>>>>> acbff7f4474418f5658cd8d1be109f1f0cac5d8c
+=======
+>>>>>>> acbff7f4474418f5658cd8d1be109f1f0cac5d8c
 #%%
-#Decoding, make rates into a dataframe,  paste ListA and make that another column
-# either export or copy paste into an excel
-
-Rates_df_manual = pd.DataFrame(Rates_manual)
-ListA = [3,4,2,4,3,4,3,4,2,4,2,4,3,4,2,4,2,4,3,4,2,4]
-Rates_df_manual['color'] = ListA
-
-White_manual = Rates_df_manual[Rates_df_manual['color'] == 4].mean()[0]
-Blue_manual = Rates_df_manual[Rates_df_manual['color'] == 2].mean()[0]
-Red_manual = Rates_df_manual[Rates_df_manual['color'] == 3].mean()[0]
-
-print('White', White_manual, 'Blue', Blue_manual, 'Red' , Red_manual)
-
-Rates_df_manual.to_excel("894_Manual_Results.xlsx")
+new_features.fit(filtered_df,filter_feature=True,fill_na=True,estimate_na=False)
 
 #%%
-
-## MANUAL SCORING
-
-index_manual = (Blue_manual - Red_manual) /(Blue_manual + Red_manual)
-print(index_manual)
-
-#%%
-# Measuring synchronization
-indbins = np.random.rand(0,LoopLength)
-#
-for i in np.arange(0,len(Looped.columns)):
-    indbin = uniform(binarizeOp(Looped_Manual[i], threshold = 0), LoopLength)
-    indbins = np.vstack([indbins, indbin])
-
-
 

@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import interpolate 
-from auto_filter_full_CE import  auto_scoring_tracefilter_full, transform_data,filter_tailbeating
+from auto_filter_full_CE import  auto_scoring_tracefilter_full_CE, transform_data,filter_tailbeating
 class Feature_extraction():
     
     '''
@@ -51,7 +51,7 @@ class Feature_extraction():
 
         if add_midpoint:
             df=transform_data(raw_df)
-            return auto_scoring_tracefilter_full(df,p_head=p_head,p_tail=p_tail,p=p)
+            return auto_scoring_tracefilter_full_CE(df,p_head=p_head,p_tail=p_tail,p=p)
         else:
             return filter_tailbeating(raw_df,p0=p0,p_head = p_head, p1=p1, p2 = p2, t1 = t1)
             

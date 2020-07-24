@@ -58,7 +58,7 @@ def binarizeOp(Operangle, threshold):
     return (binindex)
 
 
-def binarize_Op_2(Operangle, threshold = 72):
-    boolean = Operangle.apply(lambda x: 1 if x > threshold else 0).values
+def binarize_Op_2(Operangle, lb = 65, ub = 135):
+    boolean = Operangle.apply(lambda x: 1 if lb < x < ub else 0)
     return(boolean)
 

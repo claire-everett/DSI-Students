@@ -19,6 +19,7 @@ Created on Thu Feb 27 15:29:30 2020
 import pandas as pd
 import numpy as np
 from tqdm import tqdm_notebook as tqdm
+from functions_test import binarize_Op_2
 
 def mydistance(pos_1,pos_2):
     '''
@@ -389,10 +390,20 @@ def manip_paramlist(Plist):
 ## Takes together a function from automatic data -> binary scores, and a list of relevant parameters, as well as 
 ## manual data and aforementioned automatically scored data
 
+def NC_ROC(data_auto, params):
+    p0 = params[0]
+    p1 = params[1]
+    return auto_scoring_TS1(data_auto,p0,p1)
+
 def TS1_ROC(data_auto,params):
     p0 = params[0]
     p1 = params[1]
     return auto_scoring_TS1(data_auto,p0,p1)
+
+def Yuyang_ROC(Yuyang_filter,params):
+    lb = params[0]
+    ub = params[1]
+    return binarize_Op_2(Yuyang_filter, lb, ub)
 
 def M2_ROC(data_auto,params):
     p0 = params[0]

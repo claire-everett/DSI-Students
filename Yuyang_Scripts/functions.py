@@ -12,8 +12,6 @@ import pandas as pd
 from glob import glob
 import os
 
-
-
 def nanarccos (floatfraction):
     con1 = ~np.isnan(floatfraction)
     

@@ -28,6 +28,35 @@ from scipy.ndimage import zoom
 import warnings
 #filtering only head, with extra measures
 #Might need to implement filtering L/R eye at the same time as well
+
+def relative_position_check(head):
+    #try to keep the predicted position of head around the actual head as much as possible
+    #assumptions: the first frame of head is accurate
+                 #inaccurate head position(mostly be at tail) can last no more than 8 frames
+                #if this happens, another 8 frames of mislocatedh head position will spawn
+    #the reason it is not integrated in the class filtering function is because it is not done vector-wise and is likely to me much slower
+    data = head.copy()
+    head_x=data.x.iloc[0]
+    head_y=data.y.iloc[0]
+    counter=0
+    for i in tqdm(range(data.shape[0])):
+        x=data.x.iloc[i]
+        y=data.y.iloc[i]
+        distance=np.sqrt(np.square((x-head_x))+np.square((y-head_y)))
+            #sometimes DLC misclassifies tail as head, so just to remove this by looking at the relative location changed
+        if (distance>20 and counter<=7) or np.isnan(distance):
+                #if cur point is close to the previous invalid pt, or cur point is far from prev valid pt
+            data.x.iloc[i]=np.nan
+            data.y.iloc[i]=np.nan
+            counter+=1
+        else:
+            #record the latest valid_head position
+            head_x=data.x.iloc[i]
+            head_y=data.y.iloc[i]
+            counter=0
+    return data
+
+
 def head_inside_mask(df,mask_array,kernel_size=11,img_size=500):
     #columns:list of columns names we want to filter(['A_head','F_spine1'..]), if columns=all, then all columns are filtered
     data = df.copy()
@@ -104,12 +133,12 @@ def compute_pointness(contour, n=3):
     return out
 
 #find the largest contour,will update it to main function later
-def find_largest_contour(contours):
+def find_largest_contour(contours,interpolate=0):
     flag=0
     area=0
     for cnt in contours:
         new_area=cv2.contourArea(cnt)
-        if new_area>area and new_area<10000 :#in case some contour contains almost the whole image, not required if invert the image first
+        if new_area>area and new_area<10000*(interpolate*8+1) :#in case some contour contains almost the whole image(img not inverted first), not required if invert the image first
             area=new_area
             fish_contour=cnt
             flag=1
@@ -135,7 +164,7 @@ def compute_dist(contour,xbar,ybar):
 
 
 #give a heatmap along fish's contour about how curved it is
-def plot_result(curvatures,contour,img_size=600,quantile=0.5):
+def plot_result(curvatures,contour,img_size=600,quantile=0.5,to_array=False):
     '''
     curvatures:the curvescore on the contour, should be an nxn array equalto img_size
     contour:one specific contour, nx1x2 array
@@ -160,7 +189,12 @@ def plot_result(curvatures,contour,img_size=600,quantile=0.5):
     plt.ylim(0,img_size)
     plt.colorbar()
     plt.title("curveness heatmap on fish contour")
-    plt.show()
+    if not to_array:
+        plt.show()
+    else:
+        out=mplfig_to_npimage(fig)
+        plt.close(fig)
+        return out
     
 def filter_curvature(curvatures,contour):
     xbar,ybar=find_centroid(contour)
@@ -299,8 +333,6 @@ def compute_cos(contour, step=3,img_size=600,min_step=2,quantile=0.5):
         else:
             return find_prev(i,step-1,min_step)
     for i in range(N):
-        x_cur,y_cur=contour[i]
-    for i in range(N):
         x_cur, y_cur = contour[i]
         if validity[i]==False:
             #head/tail position's cosine angle encoded to -1 for future visualization
@@ -400,7 +432,7 @@ def runLengthEncoding(arr):
             l=1
         prev=val
     length.append(l)
-    return value,length
+    return np.array(value),np.array(length)
 
 
 '''

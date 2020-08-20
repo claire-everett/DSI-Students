@@ -60,7 +60,7 @@ def find_conservative_mask(videopath,length=40*300,start=0,step=1,pre_filter=Non
         index+=step
         vidcap.set(1,index)
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        ret,th = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY)
+        ret,th = cv2.threshold(gray, 35, 255, cv2.THRESH_BINARY)
         #th=cv2.GaussianBlur(th, (3, 3), 0)
         #first shrink the mask to get it separate from its reflection
         k2 = cv2.getStructuringElement(cv2.MORPH_RECT, (7,7))
@@ -71,16 +71,6 @@ def find_conservative_mask(videopath,length=40*300,start=0,step=1,pre_filter=Non
         contours, hierarchy = cv2.findContours(np.invert(th.copy()), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)#simplified contour pts
         #finding the contour with largest area
         fish_contour,flag=find_largest_contour(contours)
-        '''
-        flag=0
-        area=0
-        for cnt in contours:
-            new_area=cv2.contourArea(cnt)
-            if new_area>area and new_area<10000 :#in case some contour contains almost the whole image, not required if invert the image first
-                area=new_area
-                fish_contour=cnt
-                flag=1
-            '''
         if flag==0:
             print("no valid fish contour find at index {}".format(i))
             img=np.float32(np.full(image.shape,255))#just in case there's no valid contour, won't happen in the current case
@@ -225,16 +215,17 @@ df.columns = df.columns.droplevel()
 df=df.iloc[90000:95000,:]
 new_features=features(starttime=0,endtime=5000)
 filtered_df=new_features.filter_df(df,add_midpoint=True)
-filtered_df=inside_mask(df,mask_array,kernel_size=11)
-#filtered_df=filtered_df.fillna(method="bfill")
+#filtered_df=inside_mask(df,mask_array,kernel_size=11)
+#filtered_df=filtered_df.fillna(method="ffill")
 filtered_head=relative_position_check(filtered_df.A_head)
-filtered_head=filtered_head.fillna(method="bfill")
-#head_x=filtered_df.A_head.x
-#head_y=filtered_df.A_head.y     
+filtered_head=filtered_head.fillna(method="ffill")
+    
 #head=filtered_df.A_head
 head_x=filtered_head.x
 head_y=filtered_head.y
 '''
+head_x=filtered_df.A_head.x
+head_y=filtered_df.A_head.y 
 spine1_x=filtered_df.F_spine1.x
 spine1_y=filtered_df.F_spine1.y
 Roper_x=filtered_df.B_rightoperculum.x
@@ -242,6 +233,17 @@ Roper_y=filtered_df.B_rightoperculum.y
 Loper_x=filtered_df.E_leftoperculum.x
 Loper_y=filtered_df.E_leftoperculum.y
 '''
+'''
+head_x=df.A_head.x
+head_y=df.A_head.y 
+spine1_x=df.F_spine1.x
+spine1_y=df.F_spine1.y
+Roper_x=df.B_rightoperculum.x
+Roper_y=df.B_rightoperculum.y
+Loper_x=df.E_leftoperculum.x
+Loper_y=df.E_leftoperculum.y
+'''
+
 new_img_array,new_mask_array,new_contour_array=find_tail("TailBeatingExamples/Copy of IM1_IM2_2.1.1_L.mp4",mask_array,contour_array,filtered_head,start=90000,step=1,interpolate=True)
 out = cv2.VideoWriter('videos/test.mp4',cv2.VideoWriter_fourcc(*'mp4v'), fps, (image_length,image_length))
 for i in range(len(new_img_array)):
@@ -263,30 +265,33 @@ def make_frame(t):
     mask=mask_array[time]
     x=head_x.iloc[time]
     y=head_y.iloc[time]
-    '''
+    
     sx=spine1_x[time]
     sy=spine1_y[time]
     lox=Loper_x[time]
     loy=Loper_y[time]
     rox=Roper_x[time]
     roy=Roper_y[time]
-    '''
+    
     fig=plt.figure()
     plt.imshow(mask,"gray")
     plt.plot(x,y,"ro",markersize=3)
-    '''
+    
     plt.plot(sx,sy,"ro",markersize=3,c="blue")
     plt.plot(lox,loy,"ro",markersize=3,c="blue")
     plt.plot(rox,roy,"ro",markersize=3,c="blue")
-    '''
+    plt.text(-150,50,"{} frame".format(time),bbox=dict(boxstyle="square",
+                   ec=(1., 0.5, 0.5),
+                   fc=(1., 0.8, 0.8),
+                   ))
     plt.xlim(0,500)
     plt.ylim(0,500)
     out=mplfig_to_npimage(fig)
     plt.close(fig)
     return out
 
-animation = VideoClip(make_frame, duration = 50)
-animation.write_videofile("videos/filled_head_class.mp4", fps=fps)
+animation = VideoClip(make_frame, duration = 125)
+animation.write_videofile("videos/head_operculum_spine1_raw.mp4", fps=fps)
 
 def head_on_contour(head_x,head_y,contour):
     dists=compute_dist(contour,head_x,head_y)
@@ -356,14 +361,13 @@ for i in tqdm(range(len(new_contour_array))):
     curve_scores.append(compute_cos(contour,step=100))
     head_index.append(head_on_contour(head_x[i],head_y[i],contour))
 
-def plot_result(curvatures,contour,length,tail_index,midline=None,img_size=600,quantile=0.5,to_array=False,vmax=1):
+def plot_result(curvatures,contour,length,tail_index,head_index,time,midline=None,img_size=600,quantile=0.5,to_array=False,vmax=1):
     '''
     curvatures:the curvescore on the contour, should be an nxn array equalto img_size
     contour:one specific contour, nx1x2 array
     for plotting tail and the flipping pts, for debugging
     '''
     xbar,ybar=find_centroid(contour)
-    colors=np.array(np.zeros_like(x),np.float64)
     dists=compute_dist(contour,xbar,ybar)
     fig =plt.figure()
     ax = fig.add_subplot(1,1,1)
@@ -373,6 +377,7 @@ def plot_result(curvatures,contour,length,tail_index,midline=None,img_size=600,q
     x1=contour[(np.cumsum(length)-1)[:-1]][:,:,0]
     y1=contour[(np.cumsum(length)-1)[:-1]][:,:,1]
     plt.plot(np.float64(contour[tail_index,0,0]),np.float64(contour[tail_index,0,1]),"ro",markersize=5,color="red")
+    plt.plot(np.float64(contour[head_index,0,0]),np.float64(contour[head_index,0,1]),"ro",markersize=5,color="purple")
     plt.scatter(x1,y1,s=3,c="green")
     if midline is not None:
          xmid=midline[:,0]
@@ -382,6 +387,10 @@ def plot_result(curvatures,contour,length,tail_index,midline=None,img_size=600,q
     plt.xlim(0,img_size)
     plt.ylim(0,img_size)
     plt.colorbar()
+    plt.text(-300,80,"{} frame".format(time),bbox=dict(boxstyle="square",
+                   ec=(1., 0.5, 0.5),
+                   fc=(1., 0.8, 0.8),
+                   ))
     plt.title("curveness heatmap on fish contour")
     if not to_array:
         plt.show()
@@ -401,12 +410,7 @@ def averageBlur(arr,neighbor_width=30):
     out=arr.copy()
     l=len(arr)
     for i in range(l):
-        if i-neighbor_width>=0 and i+neighbor_width<l:
-            out[i]=np.mean(arr[i-neighbor_width:i+neighbor_width+1])
-        elif i-neighbor_width<0:
-            out[i]=(np.sum(arr[(i-neighbor_width)%l:])+np.sum(arr[:i+neighbor_width+1]))/(2*neighbor_width+1)
-        else:
-            out[i]=(np.sum(arr[i-neighbor_width:])+np.sum(arr[:(i+neighbor_width+1)%l]))/(2*neighbor_width+1)
+        out[i]=np.sum(LoopingArray(arr)[(i-neighbor_width):i+neighbor_width+1])/(2*neighbor_width+1)
     return out
 
 averageBlur(curve_scores[0][:,2])
@@ -415,12 +419,48 @@ test[:,2]=averageBlur(test[:,2],neighbor_width=20)
 plot_result(test,new_contour_array[0],img_size=1500,vmax=1)
 
 
+def combine_small_segment(value,length,minimal_length=70):
+    l=len(value)
+    flag=0
+    if value[0]==value[l-1]:
+        temp=length[l-1]
+        flag=1
+        length[0]+=temp
+        value=value[:l-1]
+        length=length[:l-1]
+    new_val=[]
+    new_length=[]
+    stack=0
+    for i in range(len(value)):
+        ll=length[i]
+        if ll<minimal_length:
+            if new_val:                
+                new_length[len(new_length)-1]+=ll
+            else:
+                stack+=ll
+        else:
+            if len(new_val)==0 or new_val[::-1][0]!=value[i]:
+                new_val.append(value[i])
+                new_length.append(length[i]+stack)
+                stack=0
+            else:
+                new_length[len(new_length)-1]+=ll
+    if flag==1:
+        if new_val[len(new_length)-1]!=new_val[0]:
+            new_val.append(new_val[0])
+            new_length.append(temp)
+        else:
+            new_length[len(new_length)-1]+=temp
+        new_length[0]-=temp
+            
+    return np.array(new_val),np.array(new_length)
+
 def predict_tail(contour,head_index,step=None,quantile=0.4,neighbor_width=None):
     #default value, in case the image is/is not zoomed
     if step is None:
-        step=int(len(contour)/10)
+        step=[int(len(contour)/10),int(len(contour)/10)*1.5]
     if neighbor_width is None:
-        neighbor_width=int(len(contour)/20)
+        neighbor_width=[int(len(contour)/20),int(len(contour)/20)]
     xbar,ybar=find_centroid(contour)
     dists=compute_dist(contour,xbar,ybar)
     thres=np.quantile(dists,quantile)
@@ -428,7 +468,8 @@ def predict_tail(contour,head_index,step=None,quantile=0.4,neighbor_width=None):
     validity=dists>thres
     l=len(dists)
     value,length=runLengthEncoding(validity)
-    def find_tail_segment(value,length):
+    value,length=combine_small_segment(value, length)
+    def find_segment(value,length):
         #index of segment
         l=len(value)
         new_length=length.copy()
@@ -438,7 +479,12 @@ def predict_tail(contour,head_index,step=None,quantile=0.4,neighbor_width=None):
             new_length[0]=length[0]+length[l-1]
             new_value=value[:-1]
             new_length=new_length[:-1]
-        longest,second_longest=np.sort(new_length[new_value==1])[::-1][:2]
+        try:
+            #if the filtering goes wrong and less than 2 positive segments were found
+            longest,second_longest=np.sort(new_length[new_value==1])[::-1][:2]
+        except:
+            print("less than 2 segments found at index{}".format(i))
+            return np.nan
         #finding the longest 2 segments which are far from centroid
         if np.where(np.logical_and(new_value==1,new_length==longest))[0].shape[0]==1:
             longest_positive_index=np.where(np.logical_and(new_value==1,new_length==longest))[0][0]
@@ -447,7 +493,6 @@ def predict_tail(contour,head_index,step=None,quantile=0.4,neighbor_width=None):
             #in case the 2 segments are of equal length
             longest_positive_index=np.where(np.logical_and(new_value==1,new_length==longest))[0][0]
             second_longest_positive_index=np.where(np.logical_and(new_value==1,new_length==second_longest))[0][1]
-            #
         if longest_positive_index!=0:
             longest_positive_interval=[np.sum(length[:longest_positive_index]),np.sum(length[:longest_positive_index+1])-1]
         else:
@@ -460,12 +505,12 @@ def predict_tail(contour,head_index,step=None,quantile=0.4,neighbor_width=None):
             head_index>=longest_positive_interval[0]) or (head_index>=longest_positive_interval[0] 
             and longest_positive_interval[0]>longest_positive_interval[1]):
             #if head in the first segment,return the second segment
-            return second_longest_positive_interval[0],second_longest_positive_interval[1]
+            return second_longest_positive_interval[0],second_longest_positive_interval[1],longest_positive_interval[0],longest_positive_interval[1]
         elif (head_index<=second_longest_positive_interval[1] and 
               #if head in the second segment,return the first segment
             head_index>=second_longest_positive_interval[0]) or (head_index>=second_longest_positive_interval[0] 
             and second_longest_positive_interval[0]>second_longest_positive_interval[1]):
-            return longest_positive_interval[0],longest_positive_interval[1]
+            return longest_positive_interval[0],longest_positive_interval[1],second_longest_positive_interval[0],second_longest_positive_interval[1]
         else:
             #if head index not inside the valid segment when the fish is too curved?
             #choose tail segment as the segment furthur from the head_index
@@ -474,49 +519,61 @@ def predict_tail(contour,head_index,step=None,quantile=0.4,neighbor_width=None):
             dist_to_second_longest=min((head_index-second_longest_positive_interval[0])%len(contour),(head_index-second_longest_positive_interval[1])%len(contour),
                                 (second_longest_positive_interval[0]-head_index)%len(contour),(second_longest_positive_interval[1]-head_index)%len(contour))
             if dist_to_second_longest>=dist_to_longest:
-                return second_longest_positive_interval[0],second_longest_positive_interval[1]
+                return second_longest_positive_interval[0],second_longest_positive_interval[1],longest_positive_interval[0],longest_positive_interval[1]
             else:
-                return longest_positive_interval[0],longest_positive_interval[1]
+                return longest_positive_interval[0],longest_positive_interval[1],second_longest_positive_interval[0],second_longest_positive_interval[1]
             
-    tail_start,tail_end=find_tail_segment(value,length)
-    curviness_score=compute_cos_fullbody(contour,step=step)
-    curviness=curviness_score[:,2]
-    blurred_curviness=averageBlur(curviness,neighbor_width)
+    tail_start,tail_end,head_start,head_end=find_segment(value,length)
+    curviness_score_tail=compute_cos_fullbody(contour,step=step[0])
+    curviness_score_head=compute_cos_fullbody(contour,step=step[1])
+    curviness=curviness_score_tail[:,2]
+    blurred_curviness=averageBlur(curviness,neighbor_width[0])
     '''
     sorry for using this imcomplete self defined class, i am just too confused by the ring structure of the contour
     when slicing/getting items when keep using modulus, will revise later
     '''
-    tail_segment=LoopingArray(blurred_curviness)[tail_start:tail_end]
+    tail_segment=LoopingArray(blurred_curviness)[tail_start:tail_end+1]
     tail_index=(np.argmax(tail_segment)+tail_start)%l
-    return tail_index,curviness_score,length
+    curviness=curviness_score_head[:,2]
+    blurred_curviness=averageBlur(curviness,neighbor_width[1])
+    head_segment=LoopingArray(blurred_curviness)[head_start:head_end+1]
+    better_head_index=(np.argmax(head_segment)+head_start)%l
+    return better_head_index,tail_index,curviness_score_tail,length
             
 curve_scores=[]
 tail_indexs=[]
+better_head_indexs=[]
 lengths=[]
 for i in tqdm(range(len(new_contour_array))):
     contour=new_contour_array[i]
     #since image is interpolated, and its size is 3 times before
     head_index=head_on_contour(head_x[i]*3, head_y[i]*3, contour)
-    tail_index,curve_score,length=predict_tail(contour,head_index,step=100,neighbor_width=50)
+    better_head_index,tail_index,curve_score,length=predict_tail(contour,head_index,step=[100,170],neighbor_width=[50,50])
     tail_indexs.append(tail_index)
     curve_scores.append(curve_score)
     lengths.append(length)
+    better_head_indexs.append(better_head_index)
                 
+head_indexs=[]
+for i in tqdm(range(len(new_contour_array))):
+    contour=new_contour_array[i]
+    #since image is interpolated, and its size is 3 times before
+    head_indexs.append(head_on_contour(head_x[i]*3, head_y[i]*3, contour))
+
+
 def make_frame(t):
     time=int(t*40)
     contour=new_contour_array[time]
     curviness=curve_scores[time]
     tail_index=tail_indexs[time]
     length=lengths[time]
-    return plot_result(curviness,contour,length,tail_index,quantile=0.4,img_size=1500,to_array=True,vmax=1)                
+    head_index=better_head_indexs[time]
+    return plot_result(curviness,contour,length,tail_index,head_index,time,quantile=0.4,img_size=1500,to_array=True,vmax=1)                
 
-animation = VideoClip(make_frame, duration = 30)
-animation.write_videofile("videos/tail_extract_test2.mp4", fps=40)
+animation = VideoClip(make_frame, duration = 125)
+animation.write_videofile("videos/tail_extract_test8.mp4", fps=40)
 
-for i in range(10,20):
-    contour=new_contour_array[i]
-    curviness=curve_scores[i]
-    tail_index=tail_indexs[i]
-    length=lengths[i]
-    plot_result(curviness,contour,length,tail_index,quantile=0.4,img_size=1500,vmax=1)
+            
+
+
 

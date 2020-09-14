@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import os
 from glob import glob
 import seaborn as sns; sns.set()
-from auto_filter_full_CE import  auto_scoring_tracefilter_full, transform_data
+from auto_filter_full_CE import  auto_scoring_tracefilter_full_CE, transform_data
 from find_features_CE import features
 from DSI_UsefulFunctions import mydistance, lawofcosines, speed, myvelocity,  midpointx, manual_scoring,coords, auto_scoring_get_opdeg, auto_scoring_smooth_opdeg,auto_scoring_widthfilter, auto_scoring_tracefilter,auto_scoring_TS1, auto_scoring_M2, manip_paramlist, TS1_ROC, M2_ROC, F_Auto, F_Auto_M2, ROC_Analysis_vec, Yuyang_ROC 
 from functions_test import binarize_Op_2  
@@ -27,18 +27,18 @@ h5_dir = '/Users/Claire/Desktop/PiColor/ROC_Compare'
 h5_files = sorted(glob(os.path.join(h5_dir,'*.h5')))
 print(h5_files)
 
-file_handle = h5_files[9]
+file_handle = h5_files[0]
 
 with pd.HDFStore(file_handle,'r') as help2:
     data_auto = help2.get('df_with_missing')
     data_auto.columns= data_auto.columns.droplevel()
 #%%
 #Manual
-excel_dir = '/Users/Claire/Desktop/PiColor/ROC_Compare'
-excel_files = sorted(glob(os.path.join(h5_dir,'*.xlsx')))
+excel_dir = '/Users/Claire/Desktop/PiColor/Color_Jane/Make_mp4/test'
+excel_files = sorted(glob(os.path.join(excel_dir,'*.xlsx')))
 print(excel_files)
 
-file_handle = excel_files[9]
+file_handle = excel_files[0]
 data_manual = pd.read_excel(file_handle)
 
 

@@ -25,6 +25,10 @@ from sklearn.metrics import adjusted_rand_score
 from hmmlearn import hmm
 from sklearn.metrics import f1_score
 from tqdm import tqdm
+from find_features import features
+from contour_utils import relative_position_check
+from functions import speed
+import pickle
 IMAGELENGTH=500
 #load module from Claire's script
 loader = importlib.machinery.SourceFileLoader('helper_functions', os.path.join(os.path.abspath('..'),"Claire_scripts",'helper_functions.py'))
@@ -32,6 +36,7 @@ helper_functions = loader.load_module('helper_functions')
 
 
 data_auto_scored = pd.read_excel("Claire_score_tables/IM1_IM2_auto_data_scored.xlsx")
+data_auto_scored.rename(columns={"Unnamed: 0":"time"},inplace=True)
 data_manual = pd.read_excel("Claire_score_tables/IM1_IM2_L_Manual_score.xlsx")
 
 path = "h5files/h5 2/IM1_IM2_2.1.1_LDLC_resnet50_DLC_toptrackFeb27shuffle1_170000.h5"
@@ -44,7 +49,7 @@ endtime = 140000
 Manual1 = np.array(helper_functions.manual_scoring(data_manual,data_auto1, crop0 = starttime, crop1 = endtime))
 
 data_auto_scored_trunc=data_auto_scored[20000:70000]
-data_auto_scored_trunc.rename(columns={"Unnamed: 0":"time"},inplace=True)
+
 del data_auto_scored_trunc["time"]
 #maybe should not delete?
 del data_auto_scored_trunc['X_Position']
@@ -327,22 +332,42 @@ result.release()
 
 #%%
 #Try to select optimal features here
+
+with open("data/IM1_IM2_2.1.1_L_70000_150000_orientations", "rb") as fp:  
+    orientations = pickle.load(fp)
+with open("data/IM1_IM2_2.1.1_L_70000_150000_velocity", "rb") as fp:  
+    velocity = pickle.load(fp)
+with open("data/IM1_IM2_2.1.1_L_70000_150000_tailAngle_wsign", "rb") as fp:  
+    signed_angle = pickle.load(fp)
+with open("data/IM1_IM2_2.1.1_L_70000_150000_distance_to_spineline_wsign", "rb") as fp:  
+    signed_dev = pickle.load(fp)
+
+
 data_auto_scored_trunc=data_auto_scored[20000:70000]
 del data_auto_scored_trunc["time"]
-data_auto_scored_trunc["diff_tail_angle"]=np.diff(data_auto_scored_trunc.Tail_Angle,prepend=data_auto_scored_trunc.Tail_Angle.iloc[0])
-data_auto_scored_trunc["diff_tail_dev"]=np.diff(data_auto_scored_trunc.Tail_Deviation,prepend=data_auto_scored_trunc.Tail_Deviation.iloc[0])
 data=data_auto_scored_trunc
 data['tail_beat_freq']=freq_feature[20000:70000]
-data=pd.DataFrame(StandardScaler().fit_transform(data),columns=data.columns)
+data["Orientation"]=np.array(orientations)[20000:70000]
+data["Speed"]=velocity[20000:70000]
+data['signed_angle']=signed_angle[20000:70000]
+data["signed_dev"]=signed_dev[20000:70000]
+data["diff_tail_angle"]=np.diff(data.signed_angle,prepend=data.signed_angle.iloc[0])
+data["diff_tail_dev"]=np.diff(data.signed_dev,prepend=data.signed_dev.iloc[0])
+del data['signed_angle']
+del data['signed_dev']
+data["abs_diff_angle"]=np.abs(data.diff_tail_angle)
+data["abs_diff_dev"]=np.abs(data.diff_tail_dev)
+scaler=StandardScaler()
+data=pd.DataFrame(scaler.fit_transform(data),columns=data.columns)
 data=data.fillna(method="ffill")
 
 
 #operculum and orientation is definitly important, so I don't select them
-must_include=["Oper_Angle","Orientation"]
-debatable=["X_Position","Speed","Tail_Angle","Tail_Deviation","diff_tail_angle","diff_tail_dev","tail_beat_freq"]
+must_include=["Oper_Angle","Orientation","X_Position","tail_beat_freq"]
+debatable=["Speed","Tail_Angle","Tail_Deviation","diff_tail_angle","diff_tail_dev","abs_diff_angle","abs_diff_dev"]
 def all_possible_features(x):
     '''
-    select all possible subsets for a given set, plus the must-include features
+    select all possible subsets for a given set
     '''
     if len(x)==1:
         return [x,[]]
@@ -363,6 +388,7 @@ for i in range(len(all_possible_sets)):
 #for each feature, run HMM 2 times for each num of cluster
 best_result=[]
 #store the best result for each selected feature, e.g. {["Oper","speed"]:[0.35 (f1_score),8(num_components)]}
+#do not run this!!
 for s in tqdm(all_possible_sets):
     temp_data=data[s]
     feature_score={}
@@ -387,14 +413,24 @@ for s in tqdm(all_possible_sets):
 
 import pickle 
 result=sorted(best_result,key=lambda x:x[2],reverse=True)
+
+test=sorted(best_result,key=lambda x:1 if set(x[0])==set(must_include+["abs_diff_tail_dev"]) else 0,reverse=True)
 #the result of all possible feature sets in a descending order of performance
-with open("feature_scores", 'wb') as f: 
-    pickle.dump(best_result, f)  
+with open("feature_scores_updated", 'wb') as f: 
+    pickle.dump(result, f)  
+    
+s=result[0][0]
+
+
+
 #%%below is the same video making process
 temp_data=data[s]
-n_components=10
+n_components=5
 #run HMM on the optimal feature again
 gaussianHMM=hmm.GaussianHMM(n_components=n_components,covariance_type="full").fit(temp_data)
+with open("models/HMM_5states_5features.pkl","wb") as f:
+    pickle.dump(gaussianHMM,f)
+    
 scores=[]
 labels=gaussianHMM.predict(temp_data)
 for l in range(n_components):
@@ -411,9 +447,9 @@ import cv2
 path = "TailBeatingExamples/Copy of IM1_IM2_2.1.1_L.mp4"
 cap = cv2.VideoCapture(path) 
 index=90000
-colormap=[(255,0,0), (51,51,255), (51,255,51),(0,0,0),(51,255,255),(255,128,0),(255,255,255),(255,255,0),(204,0,204),(160,160,160)]
+colormap=[(255,0,0), (51,51,255), (51,255,51),(51,255,255),(0,0,0),(255,128,0),(255,255,255),(255,255,0),(204,0,204),(160,160,160)]
 cap.set(1,index)
-result = cv2.VideoWriter('videos/current_optimal_feature_cluster.mp4',cv2.VideoWriter_fourcc(*'mp4v'), fps, (IMAGELENGTH,IMAGELENGTH))
+result = cv2.VideoWriter('videos/current_optimal_feature_cluster_updated.mp4',cv2.VideoWriter_fourcc(*'mp4v'), fps, (IMAGELENGTH,IMAGELENGTH))
 for i in range(10000): 
     # Capture frames in the video 
     ret, frame = cap.read() 
@@ -454,6 +490,13 @@ for i in range(10000):
                 (0, 0, 0),  
                 2,  
                 cv2.LINE_4) 
+    frame=cv2.putText(frame,  
+                "{} frame".format(i),  
+                (0, 470),  
+                font, 0.5,  
+                (0, 0, 0),  
+                2,  
+                cv2.LINE_4) 
     result.write(frame)
 result.release()
 
@@ -462,3 +505,106 @@ result.release()
 #explaining the hidden states?
 #abs of the dev?
 #improve tail angle and tail dev ? tell which side it is on?
+means=pd.DataFrame(gaussianHMM.means_,columns=s)
+covars=gaussianHMM.covars_
+covars_perCluster=[]
+for covar in covars:
+    covar_df=pd.DataFrame(covar,columns=s)
+    covars_perCluster.append(covar_df)
+
+#use histogram for each feature!!!!!!!!
+
+#%%
+#interpretations
+'''
+5 state, the simple one
+
+hidden state0: - operculum angle, + X_position, - tail_beat_freq, avg Orientation: 
+Inferred action: fish sticking to the right glass in a tilted position, with operculum closed, likely moving to north or south
+
+hidden state1: + Operculum angle , - orientation, + X_position, + tail_beat_freq
+covar: high var for tail_beat_freq and Oper_angle
+Inferred Action: flaring+moving tail
+
+hidden state2: + Operculum angle, - orientation, - tail_freq
+Inferred Action: flaring but more stationary, possibly flaring in a distance, or entering/exiting flaring(advancing to east/retreating from east)
+
+hidden state3: -Operculum Angle, +Orientation, - X_position
+covar: but all features seem to have rather large variance.
+Inferred Action: unclear, it's like the "leftover" state", a large proportion of it is when fish is facing north but not 
+tail beating, but there are also other frames be put into state3 that don't satisfy condition of state 0,1,2
+
+hidden state4: + diff_tail_dev, -- Operculum_angle, ++ Orientation, -- X_Position, + tail_beat_freq
+covars: diff_tail_dev has a extremely large variance, X_position and tail_beat_freq also have a large var.
+Inferred Action: tail beating
+
+
+other possible actions:
+    Idling: like when fish is not flaring nor moving its tail, but since it's a fighting period, the fish is not that idle
+    turn: Looks like hard to define a turn. First it overlaps with some other states, like the fish instantly starts flaring
+    when it turns its head to east. Secondly currently there are not many features to define the action.
+'''
+
+df=pd.DataFrame(scaler.inverse_transform(data),columns=data.columns)
+for i in range(5):
+    plt.hist(df.Oper_Angle[labels==i],label="hidden state{}".format(i),alpha=0.8,bins=15)
+plt.legend()
+plt.xlabel("degree")
+plt.ylabel("count")
+plt.title("Operculum distribution for each hidden state")
+
+for i in range(5):
+    plt.hist(df.diff_tail_dev[labels==i],label="hidden state{}".format(i),alpha=0.8,bins=40)
+plt.legend()
+plt.xlabel("frames")
+plt.ylabel("count")
+plt.xlim(-100,100)
+plt.title("difference in tail deviation's distribution for each hidden state")
+
+for i in range(5):
+    plt.hist(df.Orientation[labels==i],label="hidden state{}".format(i),alpha=0.8,bins=20)
+plt.legend()
+plt.xlabel("degree")
+plt.ylabel("count")
+plt.title("Orientation distribution for each hidden state")
+
+for i in range(5):
+    plt.hist(df.X_Position[labels==i],label="hidden state{}".format(i),alpha=0.8,bins=20)
+plt.legend()
+plt.xlim(left=370)
+plt.xlabel("frame")
+plt.ylabel("count")
+plt.title("X value's distribution for each hidden state")
+
+for i in range(5):
+    plt.hist(df.tail_beat_freq[labels==i],label="hidden state{}".format(i),alpha=0.8,bins=20)
+plt.legend()
+plt.xlabel("HZ^2")
+plt.ylabel("count")
+plt.title("frequancy feature distribution for each hidden state")
+
+from scipy import signal
+t = np.linspace(-1, 1, 200, endpoint=False)
+sig  = np.cos(2 * np.pi * 7 * t) + signal.gausspulse(t - 0.4, fc=2)
+widths = np.arange(1, 31)
+cwtmatr = signal.cwt(sig, signal.ricker, widths)
+plt.imshow(cwtmatr, extent=[-1, 1, 1, 31], cmap='PRGn', aspect='auto',
+            vmax=abs(cwtmatr).max(), vmin=-abs(cwtmatr).max())
+plt.colorbar()
+plt.show()
+
+
+points = 100
+a = 4.0
+vec2 = signal.ricker(points, 4)
+freqy=fft(vec2)
+freqs=fftfreq(100)
+plt.plot(freqs[:50],np.abs(freqy)[:50])
+freqs[np.argmax(np.abs(freqy)[:50])]
+
+import pywt
+t = np.linspace(-1, 1, 200, endpoint=False)
+sig  = np.cos(2 * np.pi * 7 * t) + np.real(np.exp(-7*(t-0.4)**2)*np.exp(1j*2*np.pi*2*(t-0.4)))
+widths = np.arange(0.25, 10,0.25)
+cwtmatr, freqs = pywt.cwt(sig, widths, 'mexh')
+

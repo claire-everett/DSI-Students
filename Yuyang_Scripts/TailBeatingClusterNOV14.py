@@ -28,6 +28,7 @@ from moviepy.editor import VideoFileClip, VideoClip, clips_array
 from moviepy.video.io.bindings import mplfig_to_npimage
 from contour_utils import compute_dist,find_centroid,runLengthEncoding
 from functions import manual_scoring,find_permutation 
+from scipy.signal import find_peaks
 IMAGELENGTH=500
 fps=40
 
@@ -46,11 +47,12 @@ f, t, Zxx = signal.stft(tail_angle, fs=40,nperseg=70,window = "hann", noverlap=6
 tail_angle=np.array(pd.Series(tail_angle).fillna(method="ffill"))
 
 #a visualization on the signal and its corresponding fourier transformation
-def Angle_make_frame(t,angle,Zxx,step,start_frame,to_array=True):
+def Angle_make_frame(t,angle,Zxx,step,start_frame,to_array=True,find_local_max=False):
     time=int(t*40)
     time=time+start_frame
     start=max(0,time-200)
     stop=min(79999,time+200)
+    feature=freq_feature[time]
     fig,ax=plt.subplots(2,1)
     if time-step>=start and time+step<=stop:
         ax[0].plot(range(time-step,time+step),angle[time-step:time+step],color="r")
@@ -72,8 +74,15 @@ def Angle_make_frame(t,angle,Zxx,step,start_frame,to_array=True):
                    ec=(1., 0.5, 0.5),
                    fc=(1., 0.8, 0.8),
                    ))
+    ax[0].text(start-10, -20,"freq_feautre={}".format(round(feature,2)),bbox=dict(boxstyle="square",
+                   ec=(1., 0.5, 0.5),
+                   fc=(1., 0.8, 0.8),
+                   ))
     ax[0].set_xticks([])
     if ~np.isnan(index):
+        if find_local_max:
+            local_max=find_peaks(np.abs(Zxx)[2:,index]/np.max(np.abs(Zxx[2:,index])),prominence=0.15)[0]
+            ax[1].scatter(f[2:][local_max],np.abs(Zxx)[2:,index][local_max],c="red")
         ax[1].plot(f[2:],np.abs(Zxx)[2:,index])
         ax[1].set_title("FFT on segment")
         ax[1].set_ylabel("amplitude")
@@ -84,14 +93,12 @@ def Angle_make_frame(t,angle,Zxx,step,start_frame,to_array=True):
         return out
     else:
         plt.show()
-        
 import functools
 start=20000
 end=22000
 duration=(end-start)/40
 
-
-make_frame=functools.partial(Angle_make_frame,angle=tail_angle,step=35,start_frame=start,to_array=True)
+make_frame=functools.partial(Angle_make_frame,angle=tail_angle,Zxx=Zxx,step=35,start_frame=start,to_array=True,find_local_max=True)
 
 
 animation = VideoClip(make_frame, duration = duration)
@@ -107,19 +114,16 @@ final_clip.write_videofile("videos/IM1_IM2_wSignal_test.mp4")
 
 
 def window_function(x,minimal=1.5,maximal=5):
-    return np.where(np.logical_and(x>minimal,x<maximal),x*x,0)
-'''
-def window_function(x,minimal=1.5,maximal=5):
-    return np.where(np.logical_and(x>minimal,x<maximal),x*x,0)
-'''
-#calculate the propotion of freqs located in 1.5-5 HZ
-weighted_freqs_stft=np.matmul(window_function(f).reshape(1,36),np.abs(Zxx)/np.sum(np.abs(Zxx[2:,:]),axis=0)[None,:]).reshape(79931)
+    return np.where(np.logical_and(x>minimal,x<maximal),x,0)
+
+
+weighted_freqs_stft=np.matmul(window_function(f,minimal=2,maximal=10).reshape(1,36),np.abs(Zxx)/np.sum(np.abs(Zxx[2:,:]),axis=0)[None,:]).reshape(79931)
 
 
 def amplitude_scaler(x,f):
-    x=x[np.logical_and(f>1.5,f<5)]
+    x=x[np.logical_and(f>2,f<10)]
     max_amplitude=np.max(x)
-    return float(min(1,max_amplitude/2)**3)
+    return float(min(1,max_amplitude/4)**2)
 amplitude_scale_factor= np.apply_along_axis(amplitude_scaler,0,np.abs(Zxx),f)
 # add a weight factor to local signals that have a small amplitude in 1.5-5HZ so that they get lower scores
 weighted_freqs_stft*=amplitude_scale_factor
@@ -318,7 +322,6 @@ temp_data_R["label"]=labels_R
 #test=compute_state_overlap(labels_R,labels,temp_data_R,temp_data)
 perms=find_permutation(labels_R,labels,temp_data_R,temp_data)
 
-labels_R=permute(labels_R,perms)
 temp_data_R["label"]=labels_R
 data_means_R=pd.DataFrame()
 for i in range(n_states):

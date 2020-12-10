@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from glob import glob
 import os
-
+from scipy.optimize import linear_sum_assignment
 def nanarccos (floatfraction):
     con1 = ~np.isnan(floatfraction)
     
@@ -166,17 +166,19 @@ def orientation2(data_auto):
     
     return cos_angle
 
-def speed (data, fps = 40):
+def speed (data, fps = 40,n_prev=10):
     
     ''' function that calculates velocity of x/y coordinates
     plug in the xcords, ycords, relevant dataframe, fps
     return the velocity as column in relevant dataframe'''
     poi = ['A_head']
     (Xcoords, Ycoords)= coords(data[poi[0]])
-    distx = Xcoords.diff() 
-    disty = Ycoords.diff()
+    n_after_x=np.concatenate((np.repeat(np.nan,n_prev),Xcoords[:-n_prev]))
+    n_after_y=np.concatenate((np.repeat(np.nan,n_prev),Ycoords[:-n_prev]))
+    distx=n_after_x-Xcoords
+    disty=n_after_y-Ycoords
     TotalDist = np.sqrt(distx**2 + disty**2)
-    Speed = TotalDist / (1/fps) #converts to seconds
+    Speed = TotalDist / (n_prev/fps) #converts to seconds
 #    
     return Speed
 
@@ -259,9 +261,11 @@ def orientation(data_auto):
     inner_product =head_ori.dot(ref)
     cos=inner_product/np.sqrt(np.sum(np.multiply(head_ori,head_ori),axis=1))
     angle=np.arccos(cos)/np.pi*180
+    '''
     det=head_ori[:,1]>0
     angle[~det]=angle[~det]+180
     angle=np.minimum(angle,360-angle)
+    '''
     return angle
 
 def compute_cos(x,y):
@@ -270,3 +274,67 @@ def compute_cos(x,y):
     norm_x=np.sum(np.multiply(x,x),axis=1)
     norm_y=np.sum(np.multiply(y,y),axis=1)
     inner_product/np.sqrt(norm_x*norm_y)
+
+def manual_scoring(data_manual,period_length,crop0 = 0,crop1= -1):
+    '''
+    A function that takes manually scored data and converts it to a binary array. 
+    
+    Parameters: 
+    data_manual: manual scored data, read in from an excel file
+    data_auto: automatically scored data, just used to establish how long the session is. 
+    
+    Returns: 
+    pandas array: binary array of open/closed scoring
+    '''
+    Manual = pd.DataFrame(0, index=np.arange(period_length), columns = ['OpOpen'])
+    reference = data_manual.index
+    
+    
+    for i in reference:
+        Manual[data_manual['Start'][i]:data_manual['Stop'][i]] = 1
+    
+    print(Manual[data_manual['Start'][i]:data_manual['Stop'][i]]) 
+     
+    return Manual['OpOpen'][crop0:crop1]
+
+'''
+This is similar to the find_permutation function in ssm package, the only change is that I changed
+the elements of the cost_matrix to be the distance between clusters
+'''
+
+def compute_state_overlap(z1, z2, K1=None, K2=None):
+    assert z1.dtype == int and z2.dtype == int
+    assert z1.shape == z2.shape
+    assert z1.min() >= 0 and z2.min() >= 0
+
+    K1 = z1.max() + 1 if K1 is None else K1
+    K2 = z2.max() + 1 if K2 is None else K2
+
+    overlap = np.zeros((K1, K2))
+    for k1 in range(K1):
+        for k2 in range(K2):
+            overlap[k1, k2] = np.sum((z1 == k1) & (z2 == k2))
+    return overlap
+
+
+def find_permutation(z1, z2, K1=None, K2=None):
+    overlap = compute_state_overlap(z1, z2, K1=K1, K2=K2)
+    K1, K2 = overlap.shape
+
+    tmp, perm = linear_sum_assignment(-overlap)
+    assert np.all(tmp == np.arange(K1)), "All indices should have been matched!"
+
+    # Pad permutation if K1 < K2
+    if K1 < K2:
+        unused = np.array(list(set(np.arange(K2)) - set(perm)))
+        perm = np.concatenate((perm, unused))
+
+    return perm
+
+def permute(x,perms):
+    #permute_labels
+    re=x.copy()
+    K=np.max(x)+1
+    for i in range(K):
+        re[x==i]=perms[i]
+    return re

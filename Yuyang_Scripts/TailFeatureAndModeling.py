@@ -114,12 +114,16 @@ def manual_scoring(data_manual,length,crop0 = 0,crop1= -1):
     return Manual['OpOpen'][crop0:crop1]
 
 
-files=sorted(glob("data/*.csv"))
+#files=sorted(glob("data/*.csv"))
 feature_columns=['operculum', 'orientation', 'movement_speed', 'turning_angle',
        'Tail_Angle', 'Tail_Dev', 'X_Position', 'curviness', 'freq_feature']
+ 
+fish_names = ["IM1_IM2_L", "IM1_IM2_R", "VM3_VM4_L", "IM2_IM4_R",
+              "VM1_VM3_L", "VM1_VM3_R", "IM2_IM4_L" , "VM3_VM4_R"]
 
-sheetnames=["IM1_IM2_L","IM1_IM2_R","IM2_IM4_L","IM2_IM4_R","VM1_VM3_L","VM1_VM3_R","VM3_VM4_L","VM3_VM4_R"]
+sheetnames=["IM1_IM2_L","IM1_IM2_R","VM3_VM4_L","IM2_IM4_R","VM1_VM3_L","VM1_VM3_R","IM2_IM4_L","VM3_VM4_R"]
 xls = pd.ExcelFile('TailBeatingExamples/TailManual(1).xlsx')
+
 #split train and test data, compute tail frequency
 train_data=pd.DataFrame()
 test_data=pd.DataFrame()
@@ -127,7 +131,9 @@ train_set=[]
 test_set=[]
 train_tail_manual=[]
 test_tail_manual=[]
-for i,file in enumerate(files):
+for i, path in enumerate(fish_names):
+    file_path = os.path.join("data", path, "*.csv")
+    file = glob(file_path)[0]
     data=pd.read_csv(file)
     freq_feature=get_freq_feature(data)
     data["freq_feature"]=freq_feature
@@ -156,8 +162,8 @@ for i,file in enumerate(files):
             test_data=test_data.append(pd.DataFrame(buffer,columns=feature_columns))
             test_tail_manual.append(np.zeros(100))
             
-train_data.reset_index(inplace=True)
-test_data.reset_index(inplace=True)
+#train_data.reset_index(inplace=True)
+#test_data.reset_index(inplace=True)
 
 train_tail_manual=np.concatenate(train_tail_manual)
 test_tail_manual=np.concatenate(test_tail_manual)
@@ -169,7 +175,7 @@ train_data["diff_tail_dev"]=np.diff(train_data.Tail_Dev,prepend=train_data.Tail_
 test_data["diff_tail_dev"]=np.diff(test_data.Tail_Dev,prepend=test_data.Tail_Dev.iloc[0])
 
 
-s=["operculum","orientation_from_contour","X_Position","freq_feature"]
+#s=["operculum","orientation_from_contour","X_Position","freq_feature"]
 
 '''
 must_include=["operculum","orientation_from_contour","freq_feature"]
@@ -198,6 +204,13 @@ for i in range(len(all_possible_sets)):
 scaler=StandardScaler()
 train=pd.DataFrame(scaler.fit_transform(train_data),columns=train_data.columns)
 test=pd.DataFrame(scaler.transform(test_data),columns=test_data.columns)
+
+pca = PCA()
+pca.fit(train)
+
+#top 5 pcs
+pcs_train = pca.transform(train)[:,:5]
+pcs_test = pca.transform(test)[:,:5]
 '''
 #for each feature, run HMM 2 times for each num of cluster
 
@@ -261,19 +274,44 @@ sn.kdeplot(train_data.freq_feature)
 
 np.mean(train_data.freq_feature<=2)
 '''
-train_s=train[s]
-test_s=test[s]
+#train_s=train[s]
+#test_s=test[s]
 
 num_states=6
-gaussianHMM=hmm.GaussianHMM(n_components=num_states,covariance_type="full").fit(train_s)
-labels=gaussianHMM.predict(train_s)
+gaussianHMM=hmm.GaussianHMM(n_components=num_states,covariance_type="full").fit(pcs_train)
+labels=gaussianHMM.predict(pcs_train)
 
-test_labels=gaussianHMM.predict(test_s)
+test_labels=gaussianHMM.predict(pcs_test)
+
+scores = []
+for l in range(num_states):
+    projected_labels=np.where(labels==l,1,0)
+    scores.append(f1_score(train_tail_manual,projected_labels))
+
+test_scores = []
+for l in range(num_states):
+    projected_labels=np.where(test_labels==l,1,0)
+    test_scores.append(f1_score(test_tail_manual,projected_labels))
+
+
 
 data_means=pd.DataFrame()
 for i in range(num_states):
-    mean_state=train_s[labels==i].mean()
+    mean_state=train[labels==i].mean()
     data_means['state{}'.format(i)]=mean_state
+    
+import contour_utils
+np.sum(labels == 5)
+value, length = contour_utils.runLengthEncoding(labels == 5)
+np.mean(length[value])
+
+data_means_test=pd.DataFrame()
+for i in range(num_states):
+    mean_state=test[test_labels==i].mean()
+    data_means_test['state{}'.format(i)]=mean_state
+    
+with open("models/GaussianHMM_6states.pkl","wb") as fp:
+    pickle.dump(gaussianHMM,fp)
 
 #%% discrete hmm
 def discretize(data):
@@ -507,7 +545,7 @@ def visualize_result(path,out,data,Manual,labels,start_index,data_start_index,fe
                 2,  
                 cv2.LINE_4) 
     
-        #write curviness
+        #write features
         for j,feature in enumerate(feature_list):
             feature_name=feature if feature!="orientation_from_contour" else "orientation"
             frame=cv2.putText(frame,  
@@ -530,10 +568,15 @@ def visualize_result(path,out,data,Manual,labels,start_index,data_start_index,fe
 start=np.random.randint(150300,190300,1)[0]
 
 visualize_result("TailBeatingExamples/Copy of IM2_IM4_5.1.2_R.mp4",'videos/hmm_6_states_test_IM2_IM4_R.mp4',
-                 train_data,train_s,labels,start,150300,["X_Position","operculum","orientation_from_contour","freq_feature"])
+                 train_data,train,labels,start,150300,[""])
 '''
 
-start=np.random.randint(0,40000,1)[0]
+start=np.random.randint(150300,190300,1)[0]
 
-visualize_result("TailBeatingExamples/Copy of VM3_VM4_5.1.1_L.mp4",'videos/hmm_6_states_test_VM3_VM4_L.mp4',
-                 test_data,test_tail_manual,test_labels,start,0,["X_Position","operculum","orientation_from_contour","freq_feature"])
+visualize_result("TailBeatingExamples/Copy of IM2_IM4_5.1.2_R.mp4",'videos/hmm_6_states_train_IM2_IM4_R.mp4',
+                 train_data,train_tail_manual,labels,start,150300,[])
+
+start=np.random.randint(50100,90100,1)[0]
+
+visualize_result("TailBeatingExamples/Copy of VM3_VM4_5.1.1_R.mp4",'videos/hmm_6_states_test_VM3_VM4_R.mp4',
+                 test_data,test_tail_manual,test_labels,start,50100,[])
